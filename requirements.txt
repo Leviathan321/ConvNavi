@@ -1,0 +1,10 @@
+pandas 
+faiss-cpu 
+sentence-transformers 
+openai 
+geopy 
+python-dateutil
+
+fastapi 
+uvicorn 
+python-dotenv 
