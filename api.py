@@ -17,7 +17,7 @@ emb_path="data/embeddings.npy"
 
 embeddings, df= get_embeddings_and_df(path_dataset,
                                       filter_city=filter_city,
-                                      nrows = 100000)
+                                      nrows = 300000) # number entries to use
 
 # Request schema
 class QueryRequest(BaseModel):

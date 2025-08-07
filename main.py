@@ -8,7 +8,7 @@ from geopy.distance import geodesic
 from datetime import datetime
 import json
 import re
-from call_openai import call_llm  # Your LLM call function
+from llm.llm_selector import pass_llm  # Your LLM call function
 import os
 
 model = SentenceTransformer('all-MiniLM-L6-v2')
@@ -63,7 +63,7 @@ def parse_query_to_constraints(query):
         {{"category": "Restaurants", "cuisine": null, "price_level": "$$$", "radius_km": null, "open_now": null, "rating": 3.0}}
     """
     # print(f"[Query] Prompt constructed: {prompt}")
-    response = call_llm(prompt)
+    response = pass_llm(prompt)[0]
     
     print(f"[Query] Response: {response}")
     return extract_json(response)
@@ -161,7 +161,7 @@ Here are some relevant places:
 {pois_text}
 
 Based on the query and the above options, recommend the most suitable place and summarize briefly in 20 words. Ask if you should navigate to that place."""
-    response = call_llm(prompt=prompt)
+    response = pass_llm(prompt=prompt)[0]
     print("response:", response)
     return response
 

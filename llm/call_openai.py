@@ -18,22 +18,26 @@ client = AzureOpenAI(
 )
 
 
-def call_llm(prompt, max_tokens = 200, temperature = 0, system_prompt = None):
+def call_openai(prompt, 
+             max_tokens = 200, 
+             temperature = 0, 
+             system_prompt = None,
+             model = deployment_name):
     response = client.chat.completions.create(
-        model=deployment_name,
+        model=model,
         temperature=temperature,
         max_tokens=max_tokens,
         messages=[
-            {"role": "system", "content": "You are an in car conversational assistant." if system_prompt is None else system_prompt},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt}
         ]
     )
 
-    return response.choices[0].message.content
+    return response.choices[0].message.content, response.usage.total_tokens
 
 if __name__ == "__main__":
     prompt = """
                 rephrase the following user utterance, leaving the variables. give 10 examples:
                 'bitte zur <BMW_App> <NP_appSynonyms> gehen'
             """
-    print(call_llm(prompt=prompt))
+    print(call_openai(prompt=prompt))

@@ -18,6 +18,13 @@
    ```
    OPENAI_API_KEY=your_openai_api_key_here
    ```
+   Create a huggingface account in case you want to use ollama models with tokenizers for huggingface.
+   Provide the token here:
+
+   ```
+   HF_TOKEN=your_hf_token
+   ```
+   On the HF website ask for access for each model you want to use. Otherwise you will get a 401 error.
 
 4. **Run the Application**  
    1. Start the FastAPI server by running:  
@@ -28,3 +35,6 @@
       ```bash
       python test/user_test.py
       ```
+
+   Note: in data `data/embeddings.npy`and `filtered_pois.csv` generated embeddings and filtered data are stored
+   based on the city selected. If you want to use another city, you need to delete the files to let them regenerate. The are used for speed-up.
