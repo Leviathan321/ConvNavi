@@ -37,6 +37,7 @@ def parse_query_to_constraints(query):
         You have to understand implicit requests, request which are produced by humans of different cultural background,
         language level, age, profession, mood.
         Try to consider all preferences or constraints the user provides in his request.
+        Do not output any explanation or other irrevelant information.
 
         Query: '{query}'
 
@@ -131,7 +132,7 @@ def apply_structured_filters(df, intent, user_location):
     return df_filtered
 
 
-def retrieve_top_k_semantically(query, df_filtered, embeddings, k=5):
+def retrieve_top_k_semantically(query, df_filtered, embeddings, k=3):
     if df_filtered.empty:
         return df_filtered
 

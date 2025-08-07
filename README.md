@@ -27,6 +27,13 @@
    On the HF website ask for access for each model you want to use. Otherwise you will get a 401 error.
 
 4. **Run the Application**  
+
+   Start the application from cli:
+    ```bash
+      python console.py
+      ``` 
+   Alternative you can run the application as a server and send the requests via a client:
+
    1. Start the FastAPI server by running:  
       ```bash
       python app.py
@@ -37,4 +44,4 @@
       ```
 
    Note: in data `data/embeddings.npy`and `filtered_pois.csv` generated embeddings and filtered data are stored
-   based on the city selected. If you want to use another city, you need to delete the files to let them regenerate. The are used for speed-up.
+   based on the city selected. If you want to use another city, you need to delete the files to let them be regenerated. They are used for speed-up.
