@@ -34,9 +34,9 @@ def preprocess_poi_json(row):
 def parse_query_to_constraints(query):
     prompt = f"""
         You are an assistant that extracts structured filters from natural language queries for POI search.
-        You have to understand implicit requests, request which are produced by humans of different cultural background,
-        language level, age, profession, mood.
-        Try to consider all preferences or constraints the user provides in his request.
+        You have to understand direct as well as implicit/subtile requests, requests which are produced by humans of different cultural background,
+        language level, age, profession, mood. 
+        Try to consider all preferences or constraints the user provides in his request. 
         Do not output any explanation or other irrevelant information.
 
         Query: '{query}'
@@ -185,7 +185,7 @@ def run_rag_navigation(query, user_location, embeddings, df):
 
     df_filtered = apply_structured_filters(df, intent, user_location)
     
-    retrieved_pois = retrieve_top_k_semantically(query, df_filtered, embeddings=embeddings, k=5)
+    retrieved_pois = retrieve_top_k_semantically(query, df_filtered, embeddings=embeddings, k=3)
    
     response = generate_recommendation(query, retrieved_pois)
     # print("response:", response)
