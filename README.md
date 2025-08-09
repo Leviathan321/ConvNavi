@@ -32,7 +32,7 @@
     ```bash
       python console.py
       ``` 
-   Alternative you can run the application as a server and send the requests via a client:
+   Alternatively, you can run the application as a server and send the requests via a client:
 
    1. Start the FastAPI server by running:  
       ```bash
