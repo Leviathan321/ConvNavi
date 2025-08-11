@@ -18,14 +18,7 @@
    ```
    OPENAI_API_KEY=your_openai_api_key_here
    ```
-   Create a huggingface account in case you want to use ollama models with tokenizers for huggingface.
-   Provide the token here:
-
-   ```
-   HF_TOKEN=your_hf_token
-   ```
-   On the HF website ask for access for each model you want to use. Otherwise you will get a 401 error.
-
+   
 4. **Run the Application**  
 
    Start the application from cli:
@@ -45,3 +38,46 @@
 
    Note: in data `data/embeddings.npy`and `filtered_pois.csv` generated embeddings and filtered data are stored
    based on the city selected. If you want to use another city, you need to delete the files to let them be regenerated. They are used for speed-up.
+
+5. **Example**
+
+An example of a request and response with retrieved points of interest (POIs) is given below:
+
+**Request:**  
+Hi, direct me to a fine Italian restaurant with more than 4 stars.
+
+**Response:**  
+```json
+{
+  "response": "Ristorante Mezza Luna offers fine Italian dining with a 4.0 rating and upscale ambiance. Shall I navigate you there?",
+  "retrieved_pois": [
+    {
+      "name": "Ristorante Mezza Luna",
+      "category": "Restaurants, Italian",
+      "rating": 4.0,
+      "price_level": "$$$",
+      "address": "901 S 8th St",
+      "latitude": 39.9383377,
+      "longitude": -75.1562457
+    },
+    {
+      "name": "Villa Di Roma",
+      "category": "Restaurants, Italian",
+      "rating": 4.0,
+      "price_level": "$$",
+      "address": "936 S 9th St",
+      "latitude": 39.9379512,
+      "longitude": -75.158238
+    },
+    {
+      "name": "Pat Bombino's",
+      "category": "Restaurants, Italian",
+      "rating": 4.0,
+      "price_level": "$$",
+      "address": "767 S 9th St",
+      "latitude": 39.9397984,
+      "longitude": -75.1575767
+    }
+  ]
+}
+```

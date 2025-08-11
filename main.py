@@ -30,7 +30,6 @@ def preprocess_poi_json(row):
     price_level = row.get('price_level', None)
     return f"{row.get('name', '')}, a {categories} place rated {rating}/5 at {row.get('address', '')}. Price: {price_level if price_level else 'N/A'}."
 
-
 def parse_query_to_constraints(query):
     prompt = f"""
         You are an assistant that extracts structured filters from natural language queries for POI search.
@@ -48,27 +47,27 @@ def parse_query_to_constraints(query):
         - radius_km: float (e.g., 5.0) or null
         - open_now: true/false/null
         - rating: float between 1.0 and 5.0 or null
+        - name: string or null (specific name or partial name of the place)
 
         Examples:
 
         Query: "Show me Italian restaurants open now with price range two dollars and rating at least 4."
-        {{"category": "Restaurants", "cuisine": "Italian", "price_level": "$$", "radius_km": null, "open_now": true, "rating": 4.0}}
+        {{"category": "Restaurants", "cuisine": "Italian", "price_level": "$$", "radius_km": null, "open_now": true, "rating": 4.0, "name": null}}
 
         Query: "I want Mexican places with rating above 3.5 within 3 kilometers."
-        {{"category": null, "cuisine": "Mexican", "price_level": null, "radius_km": 3.0, "open_now": null, "rating": 3.5}}
+        {{"category": null, "cuisine": "Mexican", "price_level": null, "radius_km": 3.0, "open_now": null, "rating": 3.5, "name": null}}
 
         Query: "Find fast food open now with low prices and rating above 4."
-        {{"category": "Fast Food", "cuisine": null, "price_level": "$", "radius_km": null, "open_now": true, "rating": 4.0}}
+        {{"category": "Fast Food", "cuisine": null, "price_level": "$", "radius_km": null, "open_now": true, "rating": 4.0, "name": null}}
 
         Query: "Show high class restaurants and rating at least 3."
-        {{"category": "Restaurants", "cuisine": null, "price_level": "$$$", "radius_km": null, "open_now": null, "rating": 3.0}}
-    """
-    # print(f"[Query] Prompt constructed: {prompt}")
-    response = pass_llm(prompt)[0]
-    
-    print(f"[Query] Response: {response}")
-    return extract_json(response)
+        {{"category": "Restaurants", "cuisine": null, "price_level": "$$$", "radius_km": null, "open_now": null, "rating": 3.0, "name": null}}
 
+        Query: "Is there a place named 'Burger Heaven' around?"
+        {{"category": null, "cuisine": null, "price_level": null, "radius_km": null, "open_now": null, "rating": null, "name": "Burger Heaven"}}
+    """
+    response = pass_llm(prompt)[0]
+    return extract_json(response)
 
 def extract_json(text):
     try:
@@ -87,6 +86,10 @@ def apply_structured_filters(df, intent, user_location):
     if intent.get("category"):
         df_filtered = df_filtered[df_filtered['category'].str.contains(intent["category"], case=False, na=False)]
         # print(f"[Filter] Category '{intent['category']}'")
+
+    if intent.get("name"):
+        pattern = re.escape(intent["name"])
+        df_filtered = df_filtered[df_filtered['name'].str.contains(pattern, case=False, na=False)]
 
     if intent.get("cuisine"):
         pattern = r'\b' + re.escape(intent["cuisine"]) + r'\b'
@@ -181,7 +184,7 @@ def clean_json(obj):
 
 def run_rag_navigation(query, user_location, embeddings, df):
     intent = parse_query_to_constraints(query)
-    # print("[INFO] Parsed intent:", intent)
+    print("[INFO] Parsed intent:", intent)
 
     df_filtered = apply_structured_filters(df, intent, user_location)
     

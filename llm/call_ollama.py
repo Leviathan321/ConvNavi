@@ -1,19 +1,16 @@
 import ollama
-from transformers import AutoTokenizer
+import time
 
-tokenizer = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3.1-8B")  # For LLaMA 3
-# Adjust to your model version version
 def call_ollama(prompt, 
-                system_prompt = "You are an in car conversational assistant.",
-                max_tokens = 200, 
-                temperature = 0, 
-                model = "llama3.2"):
+                max_tokens, 
+                temperature, 
+                model = "llama3.2", 
+                system_prompt = None):
     # Define the conversation
     messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": prompt}
+        {"role": "system", "content" : system_prompt},
+        {"role": "user", "content": prompt}
     ]
-
     # Chat with the model
     response = ollama.chat(
         model=model,
@@ -28,11 +25,28 @@ def call_ollama(prompt,
 
     # Extract the output message content
     output_content = response["message"]["content"]
+    return output_content,  response["prompt_eval_count"] + response["eval_count"]
 
-    input_tokens = tokenizer(prompt, truncation=True, padding=False)
-    output_tokens = tokenizer(output_content, truncation=True, padding=False)
+if __name__ == "__main__":
+    input = "I am in the mood for nice music."
+    prompt = """
+                Rephrase the following user utterance by using synonyms. Use synonyms that dont change the meaning.
+                Provide 2 variations. 
 
-    # Calculate total token size (input + output)
-    total_tokens = len(input_tokens["input_ids"]) + len(output_tokens["input_ids"])
+                **Example**
 
-    return output_content, total_tokens
+                Input: I am very hungry.
+                Ouput: [I am so much hungry., I am very open minded for nice food.]
+
+                **Your turn**
+
+                Input: {}
+                Output: 
+
+                """
+    print(call_ollama(prompt=prompt.format(input),
+                      max_tokens=1000,
+                      temperature=0.1,
+                      system_prompt="You are a system for replacing words with synonyms." + \
+                                    "Only output the result. Dont explain. The results should be human like and natural." +  \
+                                    "Replace only single words."))
