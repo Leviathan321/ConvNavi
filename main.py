@@ -226,6 +226,7 @@ def run_rag_navigation(query, user_location, embeddings, df):
     session_manager= SessionManager.get_instance()
     session = session_manager.get_active_session()
     if session is None or session.len() >= session.max_turns:
+        print("Creating new session...")
         session = session_manager.create_session()
     
     history = session_manager.get_active_session().get_history()

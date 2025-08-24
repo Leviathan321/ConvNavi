@@ -71,12 +71,3 @@ class SessionManager:
 
     def get_active_session(self) -> Session:
         return self.active_session
-
-    def add_turn_or_new_session(self, turn: Turn) -> Session:
-        try:
-            self.active_session.add_turn(turn)
-        except Exception:  # session full → create new one
-            print("Creating new session...")
-            self.active_session = self.create_session()
-            self.active_session.add_turn(turn)
-        return self.active_session
