@@ -6,6 +6,8 @@ import traceback
 
 load_dotenv()
 
+TOTAL_TOKENS = 0
+
 def pass_llm(prompt, 
              model=os.getenv("LLM_MODEL"),
              max_tokens=200, 
@@ -15,9 +17,11 @@ def pass_llm(prompt,
     Call the selected LLM backend with error handling that logs inputs
     when a failure occurs.
     """
+    global TOTAL_TOKENS
+
     try:
         if model in ("llama3.2", "mistral"):
-            return call_ollama(
+            response, tokens = call_ollama(
                 prompt=prompt,
                 max_tokens=max_tokens,
                 system_prompt=system_prompt,
@@ -25,14 +29,15 @@ def pass_llm(prompt,
                 model=model
             )
         else:
-            return call_openai(
+            response, tokens = call_openai(
                 prompt=prompt,
                 max_tokens=max_tokens,
                 system_prompt=system_prompt,
                 temperature=temperature,
                 model=model
             )
-
+        TOTAL_TOKENS = TOTAL_TOKENS + tokens
+        return response, tokens
     except Exception as e:
         print("=== LLM CALL FAILED ===")
         print(f"Model: {model}")
@@ -44,3 +49,6 @@ def pass_llm(prompt,
         print("Traceback:")
         traceback.print_exc()
         raise  # re-raise so the caller can handle it
+
+def get_total_tokens():
+    return TOTAL_TOKENS

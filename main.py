@@ -1,5 +1,5 @@
 import math
-from typing import Dict
+from typing import Dict, List
 import pandas as pd
 import numpy as np
 from sentence_transformers import SentenceTransformer
@@ -8,11 +8,12 @@ from geopy.distance import geodesic
 from datetime import datetime
 import json
 import re
-from llm.llm_selector import pass_llm  # Your LLM call function
+from llm.llm_selector import pass_llm, get_total_tokens # Your LLM call function
 import os
+from models import SessionManager, Turn
 
 model = SentenceTransformer('all-MiniLM-L6-v2')
-
+    
 def load_jsonl_to_df(filepath, nrows=None):
     data = []
     with open(filepath, 'r', encoding='utf-8') as f:
@@ -23,22 +24,25 @@ def load_jsonl_to_df(filepath, nrows=None):
             data.append(obj)
     return pd.DataFrame(data)
 
-
 def preprocess_poi_json(row):
     categories = row.get('category', '')
     rating = row.get('rating', None)
     price_level = row.get('price_level', None)
     return f"{row.get('name', '')}, a {categories} place rated {rating}/5 at {row.get('address', '')}. Price: {price_level if price_level else 'N/A'}."
 
-def parse_query_to_constraints(query: str):
+def parse_query_to_constraints(query: str, history: str = ""):
     prompt = f"""
         You are an assistant that extracts structured filters from natural language queries for POI search.
         You have to understand direct as well as implicit/subtile requests, requests which are produced by humans of different cultural background,
         language level, age, profession, mood. 
         Try to consider all preferences or constraints the user provides in his request. 
         Do not output any explanation or other irrevelant information.
+        Take the history into account to parse the contraints.
+        In the history, the previous turns of the conversations, there might be additional information.
 
         Query: '{query}'
+
+        History:  '{history}'
 
         Return a JSON object with the following fields:
         - category: string or null (e.g., "Restaurants", "Mexican", "Italian", "Fast Food")
@@ -49,7 +53,7 @@ def parse_query_to_constraints(query: str):
         - rating: float between 1.0 and 5.0 or null
         - name: string or null (specific name or partial name of the place)
 
-        Examples:
+        Examples (where history is empty):
 
         Query: "Show me Italian restaurants open now with price range two dollars and rating at least 4."
         {{"category": "Restaurants", "cuisine": "Italian", "price_level": "$$", "radius_km": null, "open_now": true, "rating": 4.0, "name": null}}
@@ -78,7 +82,6 @@ def extract_json(text):
     except json.JSONDecodeError:
         pass
     return None
-
 
 def apply_structured_filters(df, intent, user_location):
     df_filtered = df.copy()
@@ -182,7 +185,7 @@ def clean_json(obj):
             return None  # or a default value like 0 or ""
     return obj
 
-def nlu(query: str):
+def nlu(query: str, history: str = ""):
     prompt=f"""
         You are an ai conversational assistant that extract the intent from from natural language queries.
         You have to understand direct as well as implicit/subtile requests, requests which are produced by humans of different cultural background,
@@ -192,22 +195,26 @@ def nlu(query: str):
         Else write "directly the response to the users request, if it is not related to POI search.
         The intent name is then "NO POI".
         If the request is not POI related, try to answer it as good as possible.
+        Consider the history of the previous turns of the conversations if available.
 
         Examples: 
 
         Query: "How are you?"
+        History: ""
         Answer: {{
                 "response" : "I am fine, what about you?",
                 "intent" : "NO POI"
                 }}
 
         Query: "Show me directions to an italian restaurant?"
+        History: ""
         Answer: {{
                 "response" : "",
                 "intent" : "POI"
                 }}
 
         Query: '{query}'
+        History:  '{history}'
         Answer: 
         """
     response = pass_llm(prompt)[0]
@@ -215,32 +222,49 @@ def nlu(query: str):
     return extract_json(response)
 
 def run_rag_navigation(query, user_location, embeddings, df):
+    
+    session_manager= SessionManager.get_instance()
+    session = session_manager.get_active_session()
+    if session is None or session.len() >= session.max_turns:
+        session = session_manager.create_session()
+    
+    history = session_manager.get_active_session().get_history()
 
-    # test nlu
-    nlu_parsed = nlu(query)
+    turn = Turn(question=query, answer=None, retrieved_pois=[])
+    session.add_turn(turn)
+
+    # NLU
+    print("history:", history)
+    nlu_parsed = nlu(query, history)
     print(nlu_parsed)
 
     if nlu_parsed["intent"] != "POI":
         response = nlu_parsed["response"]
         pois_output = []
     else:
-        poi_constraints = parse_query_to_constraints(query)
+        poi_constraints = parse_query_to_constraints(query, history = history)
         print("[INFO] Parsed poi intent:", poi_constraints)
 
         df_filtered = apply_structured_filters(df, poi_constraints, user_location)
         
         retrieved_pois = retrieve_top_k_semantically(query, df_filtered, embeddings=embeddings, k=3)
-        # print("retreived_pois:", retrieved_pois)
-
         response = generate_recommendation(query, retrieved_pois)
-        # print("response:", response)
 
         pois_output = retrieved_pois[[
             'name', 'category', 'rating', 'price_level', 'address', 'latitude', 'longitude'
         ]].to_dict(orient="records")
         pois_output = [clean_json(poi) for poi in pois_output]
 
-    return {"response": response, "retrieved_pois": pois_output}
+    session.complete(response, retrieved_pois = pois_output)
+
+    return {
+        "response": response,
+        "retrieved_pois": pois_output,
+        "session_id": session.id,
+        "tokens_total": get_total_tokens(),
+        "price_total": round(3*get_total_tokens() / (10**6), 3), # some value, TODO use table
+    }
+
 
 def load_dataset(path_dataset, nrows, filter_city):
     df = load_jsonl_to_df(path_dataset)  # load entire or sufficient dataset
@@ -292,7 +316,6 @@ def load_data(df_path="filtered_pois.csv", emb_path="embeddings.npy"):
     else:
         return None, None
     
-
 def get_embeddings_and_df(path_dataset, 
                           filter_city,
                           df_path = "data/filtered_pois.csv", 
