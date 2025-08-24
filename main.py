@@ -30,7 +30,7 @@ def preprocess_poi_json(row):
     price_level = row.get('price_level', None)
     return f"{row.get('name', '')}, a {categories} place rated {rating}/5 at {row.get('address', '')}. Price: {price_level if price_level else 'N/A'}."
 
-def parse_query_to_constraints(query):
+def parse_query_to_constraints(query: str):
     prompt = f"""
         You are an assistant that extracts structured filters from natural language queries for POI search.
         You have to understand direct as well as implicit/subtile requests, requests which are produced by humans of different cultural background,
@@ -166,7 +166,7 @@ Here are some relevant places:
 
 Based on the query and the above options, recommend the most suitable place and summarize briefly in 20 words. Ask if you should navigate to that place."""
     response = pass_llm(prompt=prompt)[0]
-    print("response:", response)
+    # print("response:", response)
     return response
 
 def clean_json(obj):
@@ -182,29 +182,69 @@ def clean_json(obj):
             return None  # or a default value like 0 or ""
     return obj
 
+def nlu(query: str):
+    prompt=f"""
+        You are an ai conversational assistant that extract the intent from from natural language queries.
+        You have to understand direct as well as implicit/subtile requests, requests which are produced by humans of different cultural background,
+        language level, age, profession, mood. Try to understand POI requests as good as possible.
+        Try to identify whether the user wants to perform POI search or has another request.
+        If the user wants to do POI research, write as the intent "POI" and response "" 
+        Else write "directly the response to the users request, if it is not related to POI search.
+        The intent name is then "NO POI".
+        If the request is not POI related, try to answer it as good as possible.
+
+        Examples: 
+
+        Query: "How are you?"
+        Answer: {{
+                "response" : "I am fine, what about you?",
+                "intent" : "NO POI"
+                }}
+
+        Query: "Show me directions to an italian restaurant?"
+        Answer: {{
+                "response" : "",
+                "intent" : "POI"
+                }}
+
+        Query: '{query}'
+        Answer: 
+        """
+    response = pass_llm(prompt)[0]
+    print(response)
+    return extract_json(response)
+
 def run_rag_navigation(query, user_location, embeddings, df):
-    intent = parse_query_to_constraints(query)
-    print("[INFO] Parsed intent:", intent)
 
-    df_filtered = apply_structured_filters(df, intent, user_location)
-    
-    retrieved_pois = retrieve_top_k_semantically(query, df_filtered, embeddings=embeddings, k=3)
-   
-    response = generate_recommendation(query, retrieved_pois)
-    # print("response:", response)
+    # test nlu
+    nlu_parsed = nlu(query)
+    print(nlu_parsed)
 
-    pois_output = retrieved_pois[[
-        'name', 'category', 'rating', 'price_level', 'address', 'latitude', 'longitude'
-    ]].to_dict(orient="records")
-    pois_output = [clean_json(poi) for poi in pois_output]
+    if nlu_parsed["intent"] != "POI":
+        response = nlu_parsed["response"]
+        pois_output = []
+    else:
+        poi_constraints = parse_query_to_constraints(query)
+        print("[INFO] Parsed poi intent:", poi_constraints)
 
-    print("response:", response)
-    print("retreived_pois:", retrieved_pois)
+        df_filtered = apply_structured_filters(df, poi_constraints, user_location)
+        
+        retrieved_pois = retrieve_top_k_semantically(query, df_filtered, embeddings=embeddings, k=3)
+        # print("retreived_pois:", retrieved_pois)
+
+        response = generate_recommendation(query, retrieved_pois)
+        # print("response:", response)
+
+        pois_output = retrieved_pois[[
+            'name', 'category', 'rating', 'price_level', 'address', 'latitude', 'longitude'
+        ]].to_dict(orient="records")
+        pois_output = [clean_json(poi) for poi in pois_output]
+
     return {"response": response, "retrieved_pois": pois_output}
 
 def load_dataset(path_dataset, nrows, filter_city):
     df = load_jsonl_to_df(path_dataset)  # load entire or sufficient dataset
-    # Filter by city (case-insensitive, ignoring NaN)
+    # Filter by city (case-insensitive, ignofiring NaN)
     df_filtered = df[df['city'].str.contains(filter_city, case=False, na=False)].copy()
     # Reset index
     df_filtered = df_filtered.reset_index(drop=True)
