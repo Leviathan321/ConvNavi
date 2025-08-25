@@ -81,3 +81,10 @@ Hi, direct me to a fine Italian restaurant with more than 4 stars.
   ]
 }
 ```
+
+## Features
+
+- [x] POI Search
+- [x] Non POI Requests
+- [x] Conversation up to X Turns (defined in config.py)
+- [ ] Support other backend/POI-data

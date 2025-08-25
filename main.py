@@ -237,7 +237,7 @@ def run_rag_navigation(query, user_location, embeddings, df):
     # NLU
     print("history:", history)
     nlu_parsed = nlu(query, history)
-    print(nlu_parsed)
+    print("nlu: ", nlu_parsed)
 
     if nlu_parsed["intent"] != "POI":
         response = nlu_parsed["response"]
