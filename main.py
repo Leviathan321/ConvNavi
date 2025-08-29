@@ -11,8 +11,16 @@ import re
 from llm.llm_selector import pass_llm, get_total_tokens # Your LLM call function
 import os
 from models import SessionManager, Turn
+from sentence_transformers import SentenceTransformer, util
+import torch
+import traceback
 
+# Load embedding model once
 model = SentenceTransformer('all-MiniLM-L6-v2')
+
+def embed_texts(texts):
+    """Embed a list of texts and return tensors."""
+    return model.encode(texts, convert_to_tensor=True)
     
 def load_jsonl_to_df(filepath, nrows=None):
     data = []
@@ -83,20 +91,46 @@ def extract_json(text):
         pass
     return None
 
-def apply_structured_filters(df, intent, user_location):
+def apply_structured_filters(df, intent, user_location, 
+                             use_embeddings_category = False,
+                             similarity_threshold_category=0.8):
     df_filtered = df.copy()
 
+    def filter_contains_in_fields(df_filtered, key_word, field_names):
+        search_lower = key_word.lower()
+        mask = pd.Series(False, index=df_filtered.index)
+        
+        for field in field_names:
+            mask |= df_filtered[field].fillna("").str.lower().str.contains(search_lower, na=False)
+        
+        return df_filtered[mask]
+
     if intent.get("category"):
-        df_filtered = df_filtered[df_filtered['category'].str.contains(intent["category"], case=False, na=False)]
-        # print(f"[Filter] Category '{intent['category']}'")
+        if use_embeddings_category:
+            # more precise, but quite slow in laptop
+            # TODO precompute embeddings of categories
+            categories = df_filtered['category'].fillna("").tolist()
+            category_embeddings = embed_texts(categories)
+            intent_embedding = embed_texts([intent["category"]])[0]
+            
+            # Compute cosine similarity
+            cos_scores = util.cos_sim(intent_embedding, category_embeddings)[0]
+            indices = torch.where(cos_scores >= similarity_threshold_category)[0].tolist()
+            df_filtered = df_filtered.iloc[indices]
+        else:
+            df_filtered = filter_contains_in_fields(df_filtered, intent["category"], 
+                                                    field_names=["category", "name"])
 
     if intent.get("name"):
         pattern = re.escape(intent["name"])
         df_filtered = df_filtered[df_filtered['name'].str.contains(pattern, case=False, na=False)]
 
     if intent.get("cuisine"):
-        pattern = r'\b' + re.escape(intent["cuisine"]) + r'\b'
-        df_filtered = df_filtered[df_filtered['category'].str.contains(pattern, case=False, na=False, regex=True)]
+        # need to check in category
+        pattern = re.escape(intent["cuisine"])
+        print("[cuisine] pattern:", pattern)
+        df_filtered = filter_contains_in_fields(df_filtered, pattern,
+                                            field_names=["category", "name"])
         # print(f"[Filter] Cuisine '{intent['cuisine']}'")
 
     if intent.get("price_level"):
@@ -134,7 +168,7 @@ def apply_structured_filters(df, intent, user_location):
     if intent.get("rating") is not None:
         df_filtered = df_filtered[df_filtered['rating'] >= intent["rating"]]
         # print(f"[Filter] Rating >= {intent['rating']}")
-
+    print("Structured filter applied.")
     return df_filtered
 
 
@@ -311,7 +345,7 @@ def save_data(df, embeddings, df_path="data/filtered_pois.csv", emb_path="data/e
 
 def load_data(df_path="filtered_pois.csv", emb_path="embeddings.npy"):
     if os.path.exists(df_path) and os.path.exists(emb_path):
-        df = pd.read_csv(df_path)
+        df = pd.read_csv(df_path, encoding='latin1')
         embeddings = np.load(emb_path)
         return df, embeddings
     else:
