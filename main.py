@@ -15,22 +15,16 @@ from sentence_transformers import SentenceTransformer, util
 import torch
 import traceback
 
+from prompts import PROMPT_GENERATE_RECOMMENDATION, PROMPT_NLU, PROMPT_PARSE_CONSTRAINTS
+from utils.file import load_jsonl_to_df
+from utils.format import clean_json, extract_json
+
 # Load embedding model once
 model = SentenceTransformer('all-MiniLM-L6-v2')
 
 def embed_texts(texts):
     """Embed a list of texts and return tensors."""
     return model.encode(texts, convert_to_tensor=True)
-    
-def load_jsonl_to_df(filepath, nrows=None):
-    data = []
-    with open(filepath, 'r', encoding='utf-8') as f:
-        for i, line in enumerate(f):
-            if nrows and i >= nrows:
-                break
-            obj = json.loads(line)
-            data.append(obj)
-    return pd.DataFrame(data)
 
 def preprocess_poi_json(row):
     categories = row.get('category', '')
@@ -39,57 +33,9 @@ def preprocess_poi_json(row):
     return f"{row.get('name', '')}, a {categories} place rated {rating}/5 at {row.get('address', '')}. Price: {price_level if price_level else 'N/A'}."
 
 def parse_query_to_constraints(query: str, history: str = ""):
-    prompt = f"""
-        You are an assistant that extracts structured filters from natural language queries for POI search.
-        You have to understand direct as well as implicit/subtile requests, requests which are produced by humans of different cultural background,
-        language level, age, profession, mood. 
-        Try to consider all preferences or constraints the user provides in his request. 
-        Do not output any explanation or other irrevelant information.
-        Take the history into account to parse the contraints.
-        In the history, the previous turns of the conversations, there might be additional information.
-
-        Query: '{query}'
-
-        History:  '{history}'
-
-        Return a JSON object with the following fields:
-        - category: string or null (e.g., "Restaurants", "Mexican", "Italian", "Fast Food")
-        - cuisine: string or null (e.g., "Mexican", "Burgers", "Thai")
-        - price_level: one of "$", "$$", "$$$", or null (based on 'RestaurantsPriceRange2' where 1="$", 2="$$", etc.)
-        - radius_km: float (e.g., 5.0) or null
-        - open_now: true/false/null
-        - rating: float between 1.0 and 5.0 or null
-        - name: string or null (specific name or partial name of the place)
-
-        Examples (where history is empty):
-
-        Query: "Show me Italian restaurants open now with price range two dollars and rating at least 4."
-        {{"category": "Restaurants", "cuisine": "Italian", "price_level": "$$", "radius_km": null, "open_now": true, "rating": 4.0, "name": null}}
-
-        Query: "I want Mexican places with rating above 3.5 within 3 kilometers."
-        {{"category": null, "cuisine": "Mexican", "price_level": null, "radius_km": 3.0, "open_now": null, "rating": 3.5, "name": null}}
-
-        Query: "Find fast food open now with low prices and rating above 4."
-        {{"category": "Fast Food", "cuisine": null, "price_level": "$", "radius_km": null, "open_now": true, "rating": 4.0, "name": null}}
-
-        Query: "Show high class restaurants and rating at least 3."
-        {{"category": "Restaurants", "cuisine": null, "price_level": "$$$", "radius_km": null, "open_now": null, "rating": 3.0, "name": null}}
-
-        Query: "Is there a place named 'Burger Heaven' around?"
-        {{"category": null, "cuisine": null, "price_level": null, "radius_km": null, "open_now": null, "rating": null, "name": "Burger Heaven"}}
-    """
+    prompt = PROMPT_PARSE_CONSTRAINTS.format(query, history)
     response = pass_llm(prompt)[0]
     return extract_json(response)
-
-def extract_json(text):
-    try:
-        match = re.search(r"\{.*\}", text, re.DOTALL)
-        if match:
-            json_str = match.group(0)
-            return json.loads(json_str)
-    except json.JSONDecodeError:
-        pass
-    return None
 
 def apply_structured_filters(df, intent, user_location, 
                              use_embeddings_category = False,
@@ -135,6 +81,7 @@ def apply_structured_filters(df, intent, user_location,
 
     if intent.get("price_level"):
         if 'price_level' in df_filtered.columns:
+
             df_filtered = df_filtered[df_filtered['price_level'] == intent["price_level"]]
             # print(f"[Filter] Price level '{intent['price_level']}'")
 
@@ -197,60 +144,13 @@ def generate_recommendation(query, pois_df):
         f"{i + 1}. {row['text']}" for i, row in pois_df.iterrows()
     ])
 
-    prompt = f"""User query: "{query}"
-Here are some relevant places:
-{pois_text}
-
-Based on the query and the above options, recommend the most suitable place and summarize briefly in 20 words. Ask if you should navigate to that place."""
+    prompt = PROMPT_GENERATE_RECOMMENDATION.format(query, pois_text)
     response = pass_llm(prompt=prompt)[0]
     # print("response:", response)
     return response
 
-def clean_json(obj):
-    """
-    Recursively clean NaN, inf, -inf values in a dict/list structure
-    """
-    if isinstance(obj, dict):
-        return {k: clean_json(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        return [clean_json(v) for v in obj]
-    elif isinstance(obj, float):
-        if math.isnan(obj) or math.isinf(obj):
-            return None  # or a default value like 0 or ""
-    return obj
-
 def nlu(query: str, history: str = ""):
-    prompt=f"""
-        You are an ai conversational assistant that extract the intent from from natural language queries.
-        You have to understand direct as well as implicit/subtile requests, requests which are produced by humans of different cultural background,
-        language level, age, profession, mood. Try to understand POI requests as good as possible.
-        Try to identify whether the user wants to perform POI search or has another request.
-        If the user wants to do POI research, write as the intent "POI" and response "" 
-        Else write "directly the response to the users request, if it is not related to POI search.
-        The intent name is then "NO POI".
-        If the request is not POI related, try to answer it as good as possible.
-        Consider the history of the previous turns of the conversations if available.
-
-        Examples: 
-
-        Query: "How are you?"
-        History: ""
-        Answer: {{
-                "response" : "I am fine, what about you?",
-                "intent" : "NO POI"
-                }}
-
-        Query: "Show me directions to an italian restaurant?"
-        History: ""
-        Answer: {{
-                "response" : "",
-                "intent" : "POI"
-                }}
-
-        Query: '{query}'
-        History:  '{history}'
-        Answer: 
-        """
+    prompt=PROMPT_NLU.format(query, history)
     response = pass_llm(prompt)[0]
     print(response)
     return extract_json(response)
@@ -279,7 +179,6 @@ def run_rag_navigation(query, user_location, embeddings, df):
     else:
         poi_constraints = parse_query_to_constraints(query, history = history)
         print("[INFO] Parsed poi intent:", poi_constraints)
-
         df_filtered = apply_structured_filters(df, poi_constraints, user_location)
         
         retrieved_pois = retrieve_top_k_semantically(query, df_filtered, embeddings=embeddings, k=3)

@@ -2,7 +2,8 @@ import time
 from main import apply_structured_filters, get_embeddings_and_df, load_dataset
 
 def check_if_poi_exists(df, constraints, user_location,
-                        output_columns = ['name','category','rating','price_level','address']):
+                        output_columns = ['name','category','rating','price_level','address'],
+                        max_pois = 5):
     if df is None or df.empty:
         return False, []
 
@@ -19,11 +20,10 @@ def check_if_poi_exists(df, constraints, user_location,
     if missing_cols:
         raise KeyError(f"Missing columns in dataframe: {missing_cols}")
 
-    print("all columns: ", df_filtered.columns.tolist())
     pois_list = df_filtered[output_columns].to_dict(orient="records")
     exists = bool(pois_list)
 
-    return exists, pois_list
+    return exists, pois_list[:max_pois]
 
 if __name__ == "__main__":
     # Load POI dataset
@@ -42,12 +42,12 @@ if __name__ == "__main__":
 
     # Example user location
     user_location = (39.955431, -75.154903)  # Philadelphia
-
+    
     # Artificially generated constraints
     constraints = {
-        "category": "bakery",
+        "category": "supermarket",
         "cuisine": "french",
-        "price_level": None,
+        "price_level": "low",
         "radius_km": None,
         "open_now": None,
         "rating": None,

@@ -1,10 +1,11 @@
 import traceback
-from typing import Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 import json
 from main import get_embeddings_and_df, run_rag_navigation
 from utils.check import check_if_poi_exists
+from utils.format import sanitize_for_json
 
 app = FastAPI()
 
@@ -35,7 +36,10 @@ class POIQueryRequest(BaseModel):
     rating: Optional[float] = None
     name: Optional[str] = None
     user_location: Optional[Tuple[float, float]] = Field(default=user_location)
-
+    
+class POIExistsResponse(BaseModel):
+    exists: bool
+    matching_pois: List[Dict[str, Any]]
 # Route
 @app.post("/query")
 def query_handler(request: QueryRequest):
@@ -51,21 +55,24 @@ def query_handler(request: QueryRequest):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
     
-@app.post("/poi_exists")
+@app.post("/poi_exists", response_model=POIExistsResponse)
 def poi_exists(constraints: POIQueryRequest):
     try:
-        constraints = constraints.model_dump()
-        print("['poi exists'] constraints:", constraints)
-        user_location = constraints.pop("user_location")
+        constraints_dict = constraints.model_dump()
+        print("['poi exists'] constraints:", constraints_dict)
 
-        # Call your existing function
-        exists, matching_pois = check_if_poi_exists(df, constraints, user_location)
+        user_location = constraints_dict.pop("user_location")
 
-        return {"exists": exists, "matching_pois": matching_pois}
+        exists, matching_pois = check_if_poi_exists(df, constraints_dict, user_location)
 
+        return POIExistsResponse(
+            exists=exists,
+            matching_pois=sanitize_for_json(matching_pois)
+        )
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
 if __name__ == "__main__":
     import sys
     while True:
