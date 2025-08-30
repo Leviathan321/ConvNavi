@@ -44,9 +44,11 @@ PROMPT_GENERATE_RECOMMENDATION="""User query: "{}"
 
         Based on the query and the above options,
         recommend the most suitable place and summarize briefly in 20 words. 
-        Ask if you should navigate to that place. Always ask to user for further input, if he wants to navigate there, or if he has other preferences/pois in mind
+        - Ask if you should navigate to that place.
+        - Always ask to user for further input, if he wants to navigate there, or if he has other preferences/pois in mind if no poi is found.
         if no poi could be found.
-        Try to sound humanlike.
+        - Try to sound humanlike.
+        - Try to be concise. 
         """
 
 PROMPT_NLU="""

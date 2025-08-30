@@ -1,11 +1,18 @@
 import traceback
 from typing import Any, Dict, List, Optional, Tuple
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 import json
 from main import get_embeddings_and_df, run_rag_navigation
 from utils.check import check_if_poi_exists
 from utils.format import sanitize_for_json
+import os
+
+load_dotenv()  # by default it looks for a .env in the working directory
+
+# Read USE_NLU and convert to boolean
+USE_NLU = os.getenv("USE_NLU", "False").lower() in ["1", "true", "yes"]
 
 app = FastAPI()
 
@@ -84,7 +91,8 @@ if __name__ == "__main__":
                 query=user_query,
                 user_location=user_location,
                 embeddings=embeddings,
-                df=df
+                df=df,
+                use_nlu=USE_NLU
             )
             print(json.dumps(output, indent=2))
         except Exception as e:

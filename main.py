@@ -155,7 +155,7 @@ def nlu(query: str, history: str = ""):
     print(response)
     return extract_json(response)
 
-def run_rag_navigation(query, user_location, embeddings, df):
+def run_rag_navigation(query, user_location, embeddings, df, use_nlu = True):
     
     session_manager= SessionManager.get_instance()
     session = session_manager.get_active_session()
@@ -170,8 +170,13 @@ def run_rag_navigation(query, user_location, embeddings, df):
 
     # NLU
     print("history:", history)
-    nlu_parsed = nlu(query, history)
-    print("nlu: ", nlu_parsed)
+    nlu_parsed = {}
+    if use_nlu:
+        nlu_parsed = nlu(query, history)
+        print("nlu: ", nlu_parsed)
+    else:
+        # mimic nlu
+        nlu_parsed["intent"] = "POI"
 
     if nlu_parsed["intent"] != "POI":
         response = nlu_parsed["response"]
