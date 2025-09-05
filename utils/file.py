@@ -1,4 +1,5 @@
 import json
+import pandas as pd
 
 def load_jsonl_to_df(filepath, nrows=None):
     data = []

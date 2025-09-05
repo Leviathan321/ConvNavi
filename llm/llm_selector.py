@@ -20,7 +20,7 @@ def pass_llm(prompt,
     global TOTAL_TOKENS
 
     try:
-        if model in ("llama3.2", "mistral"):
+        if model in ("llama3.2", "mistral", "deepseek-v2"):
             response, tokens = call_ollama(
                 prompt=prompt,
                 max_tokens=max_tokens,
