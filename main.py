@@ -1,5 +1,6 @@
 import math
 from typing import Dict, List
+from dotenv import load_dotenv
 import pandas as pd
 import numpy as np
 from sentence_transformers import SentenceTransformer
@@ -18,6 +19,10 @@ import traceback
 from prompts import PROMPT_GENERATE_RECOMMENDATION, PROMPT_NLU, PROMPT_PARSE_CONSTRAINTS
 from utils.file import load_jsonl_to_df
 from utils.format import clean_json, extract_json
+
+load_dotenv()
+
+top_k = int(os.environ.get("TOP_K", 3))
 
 # Load embedding model once
 model = SentenceTransformer('all-MiniLM-L6-v2')
@@ -119,7 +124,7 @@ def apply_structured_filters(df, intent, user_location,
     return df_filtered
 
 
-def retrieve_top_k_semantically(query, df_filtered, embeddings, k=3):
+def retrieve_top_k_semantically(query, df_filtered, embeddings, k=top_k):
     if df_filtered.empty:
         return df_filtered
 
@@ -186,7 +191,7 @@ def run_rag_navigation(query, user_location, embeddings, df, use_nlu = True):
         print("[INFO] Parsed poi intent:", poi_constraints)
         df_filtered = apply_structured_filters(df, poi_constraints, user_location)
         
-        retrieved_pois = retrieve_top_k_semantically(query, df_filtered, embeddings=embeddings, k=3)
+        retrieved_pois = retrieve_top_k_semantically(query, df_filtered, embeddings=embeddings, k=top_k)
         response = generate_recommendation(query, retrieved_pois)
 
         pois_output = retrieved_pois[[
