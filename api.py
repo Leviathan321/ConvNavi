@@ -33,7 +33,8 @@ embeddings, df= get_embeddings_and_df(path_dataset,
 class QueryRequest(BaseModel):
     query: str
     user_location: Optional[Tuple[float, float]] = Field(default=user_location)
-
+    llm_type: str = None
+    
 class POIQueryRequest(BaseModel):
     category: Optional[str] = None
     cuisine: Optional[str] = None
@@ -57,6 +58,9 @@ def query_handler(request: QueryRequest):
             embeddings=embeddings,
             df=df
         )
+        # set the llm to be used for answering
+        if request.llm_type is not None:
+            os.environ['LLM_MODEL'] = request.llm_type
         return output
     except Exception as e:
         traceback.print_exc()
