@@ -35,6 +35,25 @@ def call_openai(prompt,
 
     return response.choices[0].message.content, response.usage.total_tokens
 
+def call_openai_gpt5_models(prompt, 
+             max_completion_tokens = 200, 
+             temperature = 0, 
+             system_prompt = None,
+             model = deployment_name,
+             reasoning_effort = "minimal"):
+    response = client.chat.completions.create(
+        model=model,
+        temperature=temperature,
+        reasoning_effort=reasoning_effort,
+        max_completion_tokens=max_completion_tokens,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt}
+        ]
+    )
+
+    return response.choices[0].message.content, response.usage.total_tokens
+
 if __name__ == "__main__":
     prompt = """
                 rephrase the following user utterance, leaving the variables. give 10 examples:

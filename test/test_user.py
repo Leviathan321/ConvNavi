@@ -8,7 +8,8 @@ def test_rag_navigation(query):
 
     payload = {
         "query": query,
-        "user_location": [39.955431, -75.154903]
+        "user_location": [39.955431, -75.154903],
+        "llm_type": "llama3.2"
     }
 
     headers = {
