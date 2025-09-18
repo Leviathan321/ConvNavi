@@ -56,7 +56,8 @@ def query_handler(request: QueryRequest):
             query=request.query,
             user_location=user_location,
             embeddings=embeddings,
-            df=df
+            df=df,
+            use_nlu=USE_NLU
         )
         # set the llm to be used for answering
         if request.llm_type is not None:

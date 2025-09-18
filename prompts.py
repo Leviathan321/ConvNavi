@@ -7,8 +7,6 @@ PROMPT_PARSE_CONSTRAINTS = """
             Take the history into account to parse the contraints.
             In the history, the previous turns of the conversations, there might be additional information.
 
-            Query: {}
-
             History:  {}
 
             Return a JSON object with the following fields:
@@ -23,19 +21,24 @@ PROMPT_PARSE_CONSTRAINTS = """
             Examples (where history is empty):
 
             Query: "Show me Italian restaurants open now with price range two dollars and rating at least 4."
-            {{"category": "Restaurants", "cuisine": "Italian", "price_level": "$$", "radius_km": null, "open_now": true, "rating": 4.0, "name": null}}
+            Reponse: {{"category": "Restaurants", "cuisine": "Italian", "price_level": "$$", "radius_km": null, "open_now": true, "rating": 4.0, "name": null}}
 
             Query: "I want Mexican places with rating above 3.5 within 3 kilometers."
-            {{"category": null, "cuisine": "Mexican", "price_level": null, "radius_km": 3.0, "open_now": null, "rating": 3.5, "name": null}}
+            Response: {{"category": null, "cuisine": "Mexican", "price_level": null, "radius_km": 3.0, "open_now": null, "rating": 3.5, "name": null}}
 
             Query: "Find fast food open now with low prices and rating above 4."
-            {{"category": "Fast Food", "cuisine": null, "price_level": "$", "radius_km": null, "open_now": true, "rating": 4.0, "name": null}}
+            Response: {{"category": "Fast Food", "cuisine": null, "price_level": "$", "radius_km": null, "open_now": true, "rating": 4.0, "name": null}}
 
             Query: "Show high class restaurants and rating at least 3."
-            {{"category": "Restaurants", "cuisine": null, "price_level": "$$$", "radius_km": null, "open_now": null, "rating": 3.0, "name": null}}
+            Response: {{"category": "Restaurants", "cuisine": null, "price_level": "$$$", "radius_km": null, "open_now": null, "rating": 3.0, "name": null}}
 
             Query: "Is there a place named 'Burger Heaven' around?"
-            {{"category": null, "cuisine": null, "price_level": null, "radius_km": null, "open_now": null, "rating": null, "name": "Burger Heaven"}}
+            Response: {{"category": null, "cuisine": null, "price_level": null, "radius_km": null, "open_now": null, "rating": null, "name": "Burger Heaven"}}
+       
+            Now it is your turn: 
+
+            Query: {}
+            Response: 
         """
 
 PROMPT_GENERATE_RECOMMENDATION="""User query: "{}"
