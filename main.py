@@ -56,7 +56,7 @@ def apply_structured_filters(df, intent, user_location,
         
         return df_filtered[mask]
 
-    if intent.get("category"):
+    if len(df_filtered) > 0 and intent.get("category"):
         if use_embeddings_category:
             # more precise, but quite slow in laptop
             # TODO precompute embeddings of categories
@@ -72,11 +72,11 @@ def apply_structured_filters(df, intent, user_location,
             df_filtered = filter_contains_in_fields(df_filtered, intent["category"], 
                                                     field_names=["category", "name"])
 
-    if intent.get("name"):
+    if len(df_filtered) > 0 and intent.get("name"):
         pattern = re.escape(intent["name"])
         df_filtered = df_filtered[df_filtered['name'].str.contains(pattern, case=False, na=False)]
 
-    if intent.get("cuisine"):
+    if len(df_filtered) > 0 and intent.get("cuisine"):
         # need to check in category
         pattern = re.escape(intent["cuisine"])
         print("[cuisine] pattern:", pattern)
@@ -84,20 +84,20 @@ def apply_structured_filters(df, intent, user_location,
                                             field_names=["category", "name"])
         # print(f"[Filter] Cuisine '{intent['cuisine']}'")
 
-    if intent.get("price_level"):
+    if len(df_filtered) > 0 and intent.get("price_level"):
         if 'price_level' in df_filtered.columns:
 
             df_filtered = df_filtered[df_filtered['price_level'] == intent["price_level"]]
             # print(f"[Filter] Price level '{intent['price_level']}'")
 
-    if intent.get("radius_km") is not None:
+    if len(df_filtered) > 0 and intent.get("radius_km") is not None:
         def within_radius(row):
             poi_loc = (row['latitude'], row['longitude'])
             return geodesic(user_location, poi_loc).km <= intent["radius_km"]
         df_filtered = df_filtered[df_filtered.apply(within_radius, axis=1)]
         # print(f"[Filter] Radius <= {intent['radius_km']} km")
 
-    if intent.get("open_now") is True:
+    if len(df_filtered) > 0 and  intent.get("open_now") is True:
         now = datetime.now().strftime("%H:%M")
         def is_open(row):
             try:
@@ -117,7 +117,7 @@ def apply_structured_filters(df, intent, user_location,
         df_filtered = df_filtered[df_filtered.apply(is_open, axis=1)]
         # print(f"[Filter] Open now at {now}")
 
-    if intent.get("rating") is not None:
+    if len(df_filtered) > 0 and intent.get("rating") is not None:
         df_filtered = df_filtered[df_filtered['rating'] >= intent["rating"]]
         # print(f"[Filter] Rating >= {intent['rating']}")
     print("Structured filter applied.")
@@ -219,7 +219,6 @@ def load_dataset(path_dataset, nrows, filter_city):
     # Select top nrows from filtered data
     if nrows is not None:
         df_filtered = df_filtered.head(nrows)
-
     df_filtered.rename(columns={'stars': 'rating', 'categories': 'category', 'hours': 'opening_hours'}, inplace=True)
 
     def map_price_level(attributes: Dict) -> str:
@@ -266,10 +265,12 @@ def get_embeddings_and_df(path_dataset,
                           emb_path ="data/embeddings.npy",
                           nrows= None):
     df, embeddings = load_data(df_path, emb_path)
+    print("Loading dataset.")
     if df is None or embeddings is None:
         df = load_dataset(path_dataset, nrows=nrows, filter_city=filter_city)
         embeddings = create_embeddings(df)
         save_data(df, embeddings, df_path, emb_path)
+        print("Dataset loaded.")
     return embeddings, df
 
 if __name__ == "__main__":
