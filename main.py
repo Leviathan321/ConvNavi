@@ -1,6 +1,7 @@
 import math
 from typing import Dict, List
 from dotenv import load_dotenv
+from json_repair import repair_json
 import pandas as pd
 import numpy as np
 from sentence_transformers import SentenceTransformer
@@ -40,11 +41,12 @@ def preprocess_poi_json(row):
 def parse_query_to_constraints(query: str, history: str = ""):
     prompt = PROMPT_PARSE_CONSTRAINTS.format(query, history)
     response = pass_llm(prompt)[0]
-    return extract_json(response)
+    return extract_json(repair_json(response))
 
 def apply_structured_filters(df, intent, user_location, 
                              use_embeddings_category = False,
                              similarity_threshold_category=0.8):
+    print("intent: ", intent)
     df_filtered = df.copy()
 
     def filter_contains_in_fields(df_filtered, key_word, field_names):
@@ -79,7 +81,6 @@ def apply_structured_filters(df, intent, user_location,
     if len(df_filtered) > 0 and intent.get("cuisine"):
         # need to check in category
         pattern = re.escape(intent["cuisine"])
-        print("[cuisine] pattern:", pattern)
         df_filtered = filter_contains_in_fields(df_filtered, pattern,
                                             field_names=["category", "name"])
         # print(f"[Filter] Cuisine '{intent['cuisine']}'")
@@ -143,7 +144,7 @@ def retrieve_top_k_semantically(query, df_filtered, embeddings, k=top_k):
 
 def generate_recommendation(query, pois_df):
     if pois_df.empty:
-        return "Sorry, I cannot find any relevant places."
+        return "Sorry, I cannot find any relevant places. Do you have other preferences in mind?"
 
     pois_text = "\n".join([
         f"{i + 1}. {row['text']}" for i, row in pois_df.iterrows()
