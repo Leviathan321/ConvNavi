@@ -40,11 +40,11 @@ def preprocess_poi_json(row):
 
 def parse_query_to_constraints(query: str, history: str = ""):
     prompt = PROMPT_PARSE_CONSTRAINTS.format(history, query)
-    print("prompt:", prompt)
+    #print("prompt:", prompt)
     response = pass_llm(prompt)[0]
-    print("response before repair:", response)
+    #print("response before repair:", response)
     response = extract_json(repair_json(response))
-    print("reponse after:", response)
+    #print("reponse after:", response)
     return response
 
 def apply_structured_filters(df, intent, user_location, 
