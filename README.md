@@ -13,13 +13,16 @@
    pip install -r requirements.txt
    ```
 
-3. **Configure API Keys**  
-   Set your OpenAI API key in a `.env` file located in the project root with the following format:  
+3. **Configure env variables**
+
+   Select the type of the LLM-model used by setting LLM_MODEL variable in the `.env` file:
    ```
-   OPENAI_API_KEY=your_openai_api_key_here
+   LLM_MODEL=your_model_used
    ```
-   
-4. **Run the Application**  
+   You can also use local, ollama-based models. First you need install [ollama](ollama.com) and then pull the desired model. Currently supported models are listed in the llm_selector file.
+   To use azure openai models you have to configure the endpoint and api version in the `.env` file.
+
+5. **Run the Application**  
 
    Start the application from cli:
     ```bash
@@ -39,7 +42,7 @@
    Note: in data `data/embeddings.npy`and `filtered_pois.csv` generated embeddings and filtered data are stored
    based on the city selected. If you want to use another city, you need to delete the files to let them be regenerated. They are used for speed-up.
 
-5. **Example**
+6. **Example**
 
 An example of a request and response with retrieved points of interest (POIs) is given below:
 
