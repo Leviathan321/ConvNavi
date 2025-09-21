@@ -133,6 +133,11 @@ def apply_structured_filters(df, intent, user_location,
     if len(df_filtered) > 0 and intent.get("rating") is not None:
         df_filtered = df_filtered[df_filtered['rating'] >= intent["rating"]]
         # print(f"[Filter] Rating >= {intent['rating']}")
+
+    if len(df_filtered) > 0 and intent.get("parking") is not None:
+        df_filtered = df_filtered[df_filtered['parking']]
+
+
     print("*** Structured filter applied.")
     return df_filtered
 
@@ -208,7 +213,7 @@ def run_rag_navigation(query, user_location, embeddings, df, use_nlu = True):
         response = generate_recommendation(query, retrieved_pois)
 
         pois_output = retrieved_pois[[
-            'name', 'category', 'rating', 'price_level', 'address', 'latitude', 'longitude'
+            'name', 'category', 'rating', 'price_level', 'address', 'latitude', 'longitude', "parking"
         ]].to_dict(orient="records")
         pois_output = [clean_json(poi) for poi in pois_output]
 
@@ -222,19 +227,24 @@ def run_rag_navigation(query, user_location, embeddings, df, use_nlu = True):
         "price_total": round(3*get_total_tokens() / (10**6), 3), # some value, TODO use table
     }
 
+import ast  # for safely evaluating the string dict
 
 def load_dataset(path_dataset, nrows, filter_city):
     df = load_jsonl_to_df(path_dataset)  # load entire or sufficient dataset
-    # Filter by city (case-insensitive, ignofiring NaN)
+    
+    # Filter by city (case-insensitive, ignoring NaN)
     df_filtered = df[df['city'].str.contains(filter_city, case=False, na=False)].copy()
+    
     # Reset index
     df_filtered = df_filtered.reset_index(drop=True)
+    
     # Select top nrows from filtered data
     if nrows is not None:
         df_filtered = df_filtered.head(nrows)
+    
     df_filtered.rename(columns={'stars': 'rating', 'categories': 'category', 'hours': 'opening_hours'}, inplace=True)
 
-    def map_price_level(attributes: Dict) -> str:
+    def map_price_level(attributes: dict) -> str:
         try:
             if isinstance(attributes, dict):
                 val = attributes.get("RestaurantsPriceRange2", None)
@@ -248,7 +258,19 @@ def load_dataset(path_dataset, nrows, filter_city):
     df_filtered['price_level'] = df_filtered['attributes'].apply(map_price_level)
     df_filtered['text'] = df_filtered.apply(preprocess_poi_json, axis=1)
 
+    # New: extract whether parking exists
+    def has_parking(business_parking: str) -> bool:
+        try:
+            if isinstance(business_parking, str):
+                parking_dict = ast.literal_eval(business_parking)
+                return any(parking_dict.values())
+        except Exception:
+            pass
+        return False
+
+    df_filtered['parking'] = df_filtered['BusinessParking'].apply(has_parking)
     return df_filtered
+
 
 def create_embeddings(df, do_save = True):
     # Need to save and load later the embedding vector to save time.
