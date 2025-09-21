@@ -22,7 +22,7 @@
    You can also use local, ollama-based models. First you need install [ollama](ollama.com) and then pull the desired model. Currently supported models are listed in the llm_selector file.
    To use azure openai models you have to configure the endpoint and api version in the `.env` file.
 
-5. **Run the Application**  
+## Run the Application
 
    Start the application from cli:
     ```bash
@@ -42,7 +42,7 @@
    Note: in data `data/embeddings.npy`and `filtered_pois.csv` generated embeddings and filtered data are stored
    based on the city selected. If you want to use another city, you need to delete the files to let them be regenerated. They are used for speed-up.
 
-6. **Example**
+## Example
 
 An example of a request and response with retrieved points of interest (POIs) is given below:
 
@@ -84,6 +84,35 @@ Hi, direct me to a fine Italian restaurant with more than 4 stars.
   ]
 }
 ```
+
+
+## API Endpoints
+
+### 1. POST `/query`
+
+**Description:** Executes a RAG navigation query.
+
+**Request Schema (`QueryRequest`):**
+- `query` (str, required): Natural language query.
+- `user_location` (tuple[float, float], optional): Latitude and longitude; default is Philadelphia, PA.
+- `llm_type` (str, optional): Language model for answering.
+
+**Response:** JSON output with POI recommendations and context.
+
+**Error Handling:** Returns HTTP 500 with the exception message if processing fails.
+
+### 2. POST `/poi_exists`
+
+**Description:** Checks for the existence of POIs matching given constraints.
+
+**Request Schema (`POIQueryRequest`):**
+- Optional filters: `category`, `cuisine`, `price_level`, `radius_km`, `open_now`, `rating`, `name`, `user_location`.
+
+**Response Schema (`POIExistsResponse`):**
+- `exists` (bool): Indicates if matching POIs exist.
+- `matching_pois` (list of dict): POIs matching the constraints.
+
+**Error Handling:** Returns HTTP 500 with the exception message if processing fails.
 
 ## Features
 
