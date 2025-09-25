@@ -259,16 +259,18 @@ def load_dataset(path_dataset, nrows, filter_city):
     df_filtered['text'] = df_filtered.apply(preprocess_poi_json, axis=1)
 
     # New: extract whether parking exists
-    def has_parking(business_parking: str) -> bool:
+    def has_parking(attributes: dict) -> bool:
         try:
-            if isinstance(business_parking, str):
-                parking_dict = ast.literal_eval(business_parking)
-                return any(parking_dict.values())
+            if isinstance(attributes, dict):
+                parking_str = attributes.get("BusinessParking", None)
+                if parking_str and isinstance(parking_str, str):
+                    parking_dict = ast.literal_eval(parking_str)  # convert string → dict
+                    return any(parking_dict.values())
         except Exception:
             pass
         return False
-
-    df_filtered['parking'] = df_filtered['BusinessParking'].apply(has_parking)
+    
+    df_filtered['parking'] = df_filtered['attributes'].apply(has_parking)
     return df_filtered
 
 
