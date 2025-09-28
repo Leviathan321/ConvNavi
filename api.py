@@ -52,16 +52,19 @@ class POIExistsResponse(BaseModel):
 @app.post("/query")
 def query_handler(request: QueryRequest):
     try:
+        # set the llm to be used for answering
+        if request.llm_type is not None:
+            os.environ['LLM_MODEL'] = request.llm_type
+            print("LLM model set: ", request.llm_type)
+        llm_model = os.environ['LLM_MODEL']
         output = run_rag_navigation(
             query=request.query,
             user_location=user_location,
             embeddings=embeddings,
             df=df,
-            use_nlu=USE_NLU
+            use_nlu=USE_NLU,
+            llm_model=llm_model
         )
-        # set the llm to be used for answering
-        if request.llm_type is not None:
-            os.environ['LLM_MODEL'] = request.llm_type
         return output
     except Exception as e:
         traceback.print_exc()

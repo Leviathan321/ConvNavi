@@ -40,18 +40,30 @@ def call_openai_gpt5_models(prompt,
              temperature = 0, 
              system_prompt = None,
              model = deployment_name,
-             reasoning_effort = "minimal"):
-    response = client.chat.completions.create(
-        model=model,
-        temperature=temperature,
-        reasoning_effort=reasoning_effort,
-        max_completion_tokens=max_completion_tokens,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": prompt}
-        ]
-    )
-
+             reasoning_effort = "minimal",
+             ):
+    
+    if model == "gpt-5-chat":
+        response = client.chat.completions.create(
+                model=model,
+                temperature=temperature,
+                max_completion_tokens=max_completion_tokens,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": prompt}
+                ]
+            )
+    else:
+        response = client.chat.completions.create(
+            model=model,
+            temperature=temperature,
+            reasoning_effort=reasoning_effort,
+            max_completion_tokens=max_completion_tokens,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt}
+            ]
+        )
     return response.choices[0].message.content, response.usage.total_tokens
 
 if __name__ == "__main__":

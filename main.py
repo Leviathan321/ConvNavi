@@ -38,10 +38,13 @@ def preprocess_poi_json(row):
     price_level = row.get('price_level', None)
     return f"{row.get('name', '')}, a {categories} place rated {rating}/5 at {row.get('address', '')}. Price: {price_level if price_level else 'N/A'}."
 
-def parse_query_to_constraints(query: str, history: str = ""):
+def parse_query_to_constraints(query: str, 
+                               history: str = "",
+                               llm_model: str = ""):
     prompt = PROMPT_PARSE_CONSTRAINTS.format(history, query)
     #print("prompt:", prompt)
-    response = pass_llm(prompt)[0]
+    response = pass_llm(prompt,
+                        model = llm_model)[0]
     #print("response before repair:", response)
     response = extract_json(repair_json(response))
     #print("reponse after:", response)
@@ -159,7 +162,7 @@ def retrieve_top_k_semantically(query, df_filtered, embeddings, k=top_k):
     return df_filtered.loc[top_indices]
 
 
-def generate_recommendation(query, pois_df):
+def generate_recommendation(query, pois_df, llm_model):
     if pois_df.empty:
         return "Sorry, I cannot find any relevant places. Do you have other preferences in mind?"
 
@@ -168,7 +171,8 @@ def generate_recommendation(query, pois_df):
     ])
 
     prompt = PROMPT_GENERATE_RECOMMENDATION.format(query, pois_text)
-    response = pass_llm(prompt=prompt)[0]
+    response = pass_llm(prompt=prompt,
+                        model = llm_model)[0]
     # print("response:", response)
     return response
 
@@ -178,7 +182,12 @@ def nlu(query: str, history: str = ""):
     print(response)
     return extract_json(response)
 
-def run_rag_navigation(query, user_location, embeddings, df, use_nlu = True):
+def run_rag_navigation(query, 
+                       user_location, 
+                       embeddings, 
+                       df, 
+                       use_nlu = True,
+                       llm_model =    os.environ['LLM_MODEL']):
     print("NLU active:", use_nlu)
     session_manager= SessionManager.get_instance()
     session = session_manager.get_active_session()
@@ -205,12 +214,12 @@ def run_rag_navigation(query, user_location, embeddings, df, use_nlu = True):
         response = nlu_parsed["response"]
         pois_output = []
     else:
-        poi_constraints = parse_query_to_constraints(query, history = history)
+        poi_constraints = parse_query_to_constraints(query, history = history, llm_model = llm_model)
         print("[INFO] Parsed poi intent:", poi_constraints)
         df_filtered = apply_structured_filters(df, poi_constraints, user_location)
         
         retrieved_pois = retrieve_top_k_semantically(query, df_filtered, embeddings=embeddings, k=top_k)
-        response = generate_recommendation(query, retrieved_pois)
+        response = generate_recommendation(query, retrieved_pois, llm_model = llm_model)
 
         pois_output = retrieved_pois[[
             'name', 'category', 'rating', 'price_level', 'address', 'latitude', 'longitude', "parking"

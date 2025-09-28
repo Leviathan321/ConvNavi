@@ -1,4 +1,5 @@
 import subprocess
+from llm.call_deepseek import call_deepseek
 from llm.call_openai import call_openai, call_openai_gpt5_models
 from llm.call_ollama import call_ollama
 import os
@@ -34,7 +35,7 @@ def pass_llm(prompt,
 
     try:
         if model in ("llama3","llama3.2", "mistral", "deepseek-v2",
-                     "deepseek-r1", "qwen3:latest","qwen3:14b"):
+                     "deepseek-r1", "qwen3:latest","qwen3:14b", "qwen"):
             response, tokens = call_ollama(
                 prompt=prompt,
                 max_tokens=max_tokens,
@@ -58,9 +59,17 @@ def pass_llm(prompt,
                 temperature=temperature,
                 model=model
             )
+        elif model in ("DeepSeek-V3-0324"):
+            response, tokens = call_deepseek(
+                  prompt = prompt, 
+                  max_tokens=max_tokens, 
+                  temperature=temperature, 
+                  system_message=None, 
+                  context=None,
+                  deployment_name=model)        
         else:
             raise ValueError("Model is not known.")
-        
+        print("Used LLM for processing: ",model)
         TOTAL_TOKENS = TOTAL_TOKENS + tokens
         return response, tokens
     except Exception as e:
