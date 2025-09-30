@@ -37,7 +37,7 @@ def pass_llm(prompt,
     Call the selected LLM backend with error handling that logs inputs
     when a failure occurs.
     """
-    global TOTAL_TOKENS, TOTAL_TOKENS_IN, TOTAL_TOKENS_OUT, TOTAL_COSTS
+    global TOTAL_TOKENS, TOTAL_TOKENS_IN, TOTAL_TOKENS_OUT, TOTAL_COSTS, QUERY_COSTS
 
     try:
         if model in ("llama3","llama3.2", "mistral", "deepseek-v2",
