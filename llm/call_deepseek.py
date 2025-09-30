@@ -56,9 +56,11 @@ def call_deepseek(deployment_name: str,
         #print("Deepseek: time per call:", end_time - start_time)
         # Note: azure.ai.inference does not currently return token usage metadata
         response_msg = response.choices[0].message.content
-        used_tokens = 0  # Placeholder if token usage is not available
 
-        return response_msg, used_tokens
+        input_tokens = response.usage.prompt_tokens
+        output_tokens = response.usage.completion_tokens
+                
+        return response_msg, input_tokens, output_tokens
 
     except HttpResponseError as e:
         print("[DeepSeekClient] HttpResponseError:")

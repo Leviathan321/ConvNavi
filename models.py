@@ -17,6 +17,7 @@ class Session(object):
     id: int
     turns: list = field(default_factory=list)
     max_turns: int = int(os.getenv("MAX_TURNS"))
+    tokens: dict = field(default_factory=list)
 
     def add_turn(self, turn: Turn):
         if len(self.turns) >= self.max_turns:

@@ -25,7 +25,7 @@ def call_ollama(prompt,
 
     # Extract the output message content
     output_content = response["message"]["content"]
-    return output_content,  response["prompt_eval_count"] + response["eval_count"]
+    return output_content,  response["prompt_eval_count"],  response["eval_count"]
 
 if __name__ == "__main__":
     input = "I am in the mood for nice music."

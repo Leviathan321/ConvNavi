@@ -10,7 +10,7 @@ from geopy.distance import geodesic
 from datetime import datetime
 import json
 import re
-from llm.llm_selector import pass_llm, get_total_tokens # Your LLM call function
+from llm.llm_selector import pass_llm, get_total_tokens, get_total_costs, get_query_costs # Your LLM call function
 import os
 from models import SessionManager, Turn
 from sentence_transformers import SentenceTransformer, util
@@ -43,12 +43,12 @@ def parse_query_to_constraints(query: str,
                                llm_model: str = ""):
     prompt = PROMPT_PARSE_CONSTRAINTS.format(history, query)
     #print("prompt:", prompt)
-    response = pass_llm(prompt,
-                        model = llm_model)[0]
+    response, input_tokens, output_tokens = pass_llm(prompt,
+                        model = llm_model)
     #print("response before repair:", response)
     response = extract_json(repair_json(response))
     #print("reponse after:", response)
-    return response
+    return response, input_tokens, output_tokens
 
 def apply_structured_filters(df, intent, user_location, 
                              use_embeddings_category = False,
@@ -164,23 +164,23 @@ def retrieve_top_k_semantically(query, df_filtered, embeddings, k=top_k):
 
 def generate_recommendation(query, pois_df, llm_model):
     if pois_df.empty:
-        return "Sorry, I cannot find any relevant places. Do you have other preferences in mind?"
+        return "Sorry, I cannot find any relevant places. Do you have other preferences in mind?", 0, 0
 
     pois_text = "\n".join([
         f"{i + 1}. {row['text']}" for i, row in pois_df.iterrows()
     ])
 
     prompt = PROMPT_GENERATE_RECOMMENDATION.format(query, pois_text)
-    response = pass_llm(prompt=prompt,
-                        model = llm_model)[0]
+    response, tokens_input, tokens_output = pass_llm(prompt=prompt,
+                        model = llm_model)
     # print("response:", response)
-    return response
+    return response, tokens_input, tokens_output
 
 def nlu(query: str, history: str = ""):
     prompt=PROMPT_NLU.format(query, history)
-    response = pass_llm(prompt)[0]
+    response, tokens_input, tokens_output = pass_llm(prompt)
     print(response)
-    return extract_json(response)
+    return extract_json(response), tokens_input, tokens_output
 
 def run_rag_navigation(query, 
                        user_location, 
@@ -200,11 +200,16 @@ def run_rag_navigation(query,
     turn = Turn(question=query, answer=None, retrieved_pois=[])
     session.add_turn(turn)
 
+    tokens_query_input = 0
+    tokens_query_output = 0
+
     # NLU
     print("history:", history)
     nlu_parsed = {}
     if use_nlu:
-        nlu_parsed = nlu(query, history)
+        nlu_parsed, tokens_input, tokens_output = nlu(query, history)
+        tokens_query_input += tokens_input
+        tokens_query_output += tokens_output
         print("nlu: ", nlu_parsed)
     else:
         # mimic nlu
@@ -214,13 +219,20 @@ def run_rag_navigation(query,
         response = nlu_parsed["response"]
         pois_output = []
     else:
-        poi_constraints = parse_query_to_constraints(query, history = history, llm_model = llm_model)
+        poi_constraints, input_tokens, output_tokens = parse_query_to_constraints(query, history = history, llm_model = llm_model)
         print("[INFO] Parsed poi intent:", poi_constraints)
         df_filtered = apply_structured_filters(df, poi_constraints, user_location)
         
-        retrieved_pois = retrieve_top_k_semantically(query, df_filtered, embeddings=embeddings, k=top_k)
-        response = generate_recommendation(query, retrieved_pois, llm_model = llm_model)
+        tokens_query_input += input_tokens
+        tokens_query_output += output_tokens
 
+        retrieved_pois = retrieve_top_k_semantically(query, df_filtered, embeddings=embeddings, k=top_k)
+        response, input_tokens, output_tokens = generate_recommendation(query, retrieved_pois, llm_model = llm_model)
+   
+        tokens_query_input += input_tokens
+        tokens_query_output += output_tokens
+
+        print(response)
         pois_output = retrieved_pois[[
             'name', 'category', 'rating', 'price_level', 'address', 'latitude', 'longitude', "parking"
         ]].to_dict(orient="records")
@@ -233,7 +245,10 @@ def run_rag_navigation(query,
         "retrieved_pois": pois_output,
         "session_id": session.id,
         "tokens_total": get_total_tokens(),
-        "price_total": round(3*get_total_tokens() / (10**6), 3), # some value, TODO use table
+        "tokens_query_input": tokens_query_input,
+        "tokens_query_output": tokens_query_output,
+        "price_query": get_query_costs(),
+        "price_total": get_total_costs()
     }
 
 import ast  # for safely evaluating the string dict

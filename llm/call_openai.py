@@ -32,8 +32,13 @@ def call_openai(prompt,
             {"role": "user", "content": prompt}
         ]
     )
+    input_tokens = response.usage.prompt_tokens
+    output_tokens = response.usage.completion_tokens
 
-    return response.choices[0].message.content, response.usage.total_tokens
+    response_msg = response.choices[0].message.content
+    return response_msg, input_tokens, output_tokens
+
+    return response.choices[0].message.content, input_tokens, output_tokens
 
 def call_openai_gpt5_models(prompt, 
              max_completion_tokens = 200, 
@@ -64,7 +69,11 @@ def call_openai_gpt5_models(prompt,
                 {"role": "user", "content": prompt}
             ]
         )
-    return response.choices[0].message.content, response.usage.total_tokens
+    input_tokens = response.usage.prompt_tokens
+    output_tokens = response.usage.completion_tokens
+
+    response_msg = response.choices[0].message.content
+    return response_msg, input_tokens, output_tokens
 
 if __name__ == "__main__":
     prompt = """

@@ -5,10 +5,16 @@ from llm.call_ollama import call_ollama
 import os
 from dotenv import load_dotenv
 import traceback
+from llm.price_table import rates
 
 load_dotenv()
 
 TOTAL_TOKENS = 0
+TOTAL_TOKENS_IN = 0
+TOTAL_TOKENS_OUT = 0
+
+TOTAL_COSTS = 0
+QUERY_COSTS = 0
 
 def ensure_model(model_name):
     try:
@@ -31,12 +37,12 @@ def pass_llm(prompt,
     Call the selected LLM backend with error handling that logs inputs
     when a failure occurs.
     """
-    global TOTAL_TOKENS
+    global TOTAL_TOKENS, TOTAL_TOKENS_IN, TOTAL_TOKENS_OUT, TOTAL_COSTS
 
     try:
         if model in ("llama3","llama3.2", "mistral", "deepseek-v2",
                      "deepseek-r1", "qwen3:latest","qwen3:14b", "qwen"):
-            response, tokens = call_ollama(
+            response, input_tokens, output_tokens = call_ollama(
                 prompt=prompt,
                 max_tokens=max_tokens,
                 system_prompt=system_prompt,
@@ -44,7 +50,7 @@ def pass_llm(prompt,
                 model=model
             )
         elif model in ("gpt-5", "gpt-5-chat","gpt-5-mini"):
-            response, tokens = call_openai_gpt5_models(
+            response, input_tokens, output_tokens = call_openai_gpt5_models(
                 prompt=prompt,
                 max_completion_tokens=max_tokens,
                 system_prompt=system_prompt,
@@ -52,7 +58,7 @@ def pass_llm(prompt,
                 model=model
             )
         elif model in ("gpt-4o", "gpt-35-turbo", "gpt-4", "gpt-4o-mini"):
-            response, tokens = call_openai(
+            response, input_tokens, output_tokens = call_openai(
                 prompt=prompt,
                 max_tokens=max_tokens,
                 system_prompt=system_prompt,
@@ -60,7 +66,7 @@ def pass_llm(prompt,
                 model=model
             )
         elif model in ("DeepSeek-V3-0324"):
-            response, tokens = call_deepseek(
+            response, input_tokens, output_tokens = call_deepseek(
                   prompt = prompt, 
                   max_tokens=max_tokens, 
                   temperature=temperature, 
@@ -70,8 +76,17 @@ def pass_llm(prompt,
         else:
             raise ValueError("Model is not known.")
         print("Used LLM for processing: ",model)
-        TOTAL_TOKENS = TOTAL_TOKENS + tokens
-        return response, tokens
+
+        TOTAL_TOKENS = TOTAL_TOKENS + input_tokens + output_tokens
+        TOTAL_TOKENS_IN = TOTAL_TOKENS_IN + input_tokens
+        TOTAL_TOKENS_OUT = TOTAL_TOKENS_OUT + output_tokens
+
+        if model in rates:
+            print(model)
+            TOTAL_COSTS = TOTAL_COSTS + rates[model]["input"] * input_tokens/1000 + rates[model]["output"]  * output_tokens/1000
+            QUERY_COSTS = rates[model]["input"] * input_tokens/1000 + rates[model]["output"]  * output_tokens/1000
+
+        return response, input_tokens, output_tokens
     except Exception as e:
         print("=== LLM CALL FAILED ===")
         print(f"Model: {model}")
@@ -86,3 +101,9 @@ def pass_llm(prompt,
 
 def get_total_tokens():
     return TOTAL_TOKENS
+
+def get_total_costs():
+    return TOTAL_COSTS
+
+def get_query_costs():
+    return QUERY_COSTS
