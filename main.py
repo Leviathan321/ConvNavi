@@ -47,7 +47,7 @@ def parse_query_to_constraints(query: str,
                         model = llm_model)
     #print("response before repair:", response)
     response = extract_json(repair_json(response))
-    #print("reponse after:", response)
+    print("reponse after:", response)
     return response, input_tokens, output_tokens
 
 def apply_structured_filters(df, intent, user_location, 
