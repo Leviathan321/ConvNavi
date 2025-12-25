@@ -163,7 +163,7 @@ Final Output Format:
 If no changes are implied, return:
 {{
     "changes": [],
-    "summary": "No car state was changed."
+    "summary": "No car state change request detected."
 }}
 
 Instructions:
