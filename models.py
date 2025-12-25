@@ -25,7 +25,7 @@ class Session(object):
         self.turns.append(turn)
 
     def get_history(self, indent: int = 2) -> str:
-        return json.dumps([asdict(turn) for turn in self.turns], indent=indent)
+        return json.dumps([ {"question": turn.question, "answer": turn.answer} for turn in self.turns], indent=indent)
 
     def get_last_turn(self):
         return self.turns[-1]
