@@ -1,5 +1,5 @@
 import math
-from typing import Dict, List
+from typing import Any, Dict, List
 from dotenv import load_dotenv
 from json_repair import repair_json
 import pandas as pd
@@ -10,6 +10,7 @@ from geopy.distance import geodesic
 from datetime import datetime
 import json
 import re
+from car.state import AmbientLightLevel, CarState, ClimateMode, DoorState, HeadlightState, LightState, SeatHeatingLevel, WindowState, WiperState
 from llm.llm_selector import pass_llm, get_total_tokens, get_total_costs, get_query_costs # Your LLM call function
 import os
 from models import SessionManager, Turn
@@ -17,9 +18,9 @@ from sentence_transformers import SentenceTransformer, util
 import torch
 import traceback
 
-from prompts import PROMPT_GENERATE_RECOMMENDATION, PROMPT_NLU, PROMPT_PARSE_CONSTRAINTS
+from prompts import PROMPT_CAR_RESPONSE, PROMPT_GENERATE_RECOMMENDATION, PROMPT_NLU, PROMPT_PARSE_CONSTRAINTS, PROMPT_NLU_WITH_CAR, PROMPT_CAR_UPDATE
 from utils.file import load_jsonl_to_df
-from utils.format import clean_json, extract_json
+from utils.format import clean_json, extract_json, extract_json_list
 
 load_dotenv()
 
@@ -27,6 +28,10 @@ top_k = int(os.environ.get("TOP_K", 3))
 
 # Load embedding model once
 model = SentenceTransformer('all-MiniLM-L6-v2')
+
+car_state = CarState()
+
+INTENT_NO_NLU = os.getenv("INTENT_NO_NLU", "poi").lower()
 
 def embed_texts(texts):
     """Embed a list of texts and return tensors."""
@@ -177,9 +182,10 @@ def generate_recommendation(query, pois_df, llm_model):
     return response, tokens_input, tokens_output
 
 def nlu(query: str, history: str = ""):
-    prompt=PROMPT_NLU.format(query, history)
+    prompt=PROMPT_NLU_WITH_CAR.format(query, history)
     response, tokens_input, tokens_output = pass_llm(prompt)
     print(response)
+    print(extract_json(response))
     return extract_json(response), tokens_input, tokens_output
 
 def run_rag_navigation(query, 
@@ -212,13 +218,14 @@ def run_rag_navigation(query,
         tokens_query_output += tokens_output
         print("nlu: ", nlu_parsed)
     else:
-        # mimic nlu
-        nlu_parsed["intent"] = "POI"
+        nlu_parsed["intent"] = INTENT_NO_NLU.upper()
+        print("intent set to: ", nlu_parsed["intent"])
 
-    if nlu_parsed["intent"] != "POI":
+    if nlu_parsed["intent"] not in ("POI", "CAR"):
         response = nlu_parsed["response"]
         pois_output = []
-    else:
+    
+    if nlu_parsed["intent"] == "POI":
         poi_constraints, input_tokens, output_tokens = parse_query_to_constraints(query, history = history, llm_model = llm_model)
         print("[INFO] Parsed poi intent:", poi_constraints)
         df_filtered = apply_structured_filters(df, poi_constraints, user_location)
@@ -237,6 +244,103 @@ def run_rag_navigation(query,
             'name', 'category', 'rating', 'price_level', 'address', 'latitude', 'longitude', "parking"
         ]].to_dict(orient="records")
         pois_output = [clean_json(poi) for poi in pois_output]
+    elif nlu_parsed["intent"] == "CAR":
+        print("CAR intent")
+
+        enum_map = {
+            "windows": WindowState,
+            "lights": LightState,
+            "headlights": HeadlightState,
+            "ambient": AmbientLightLevel,
+            "doors": DoorState,
+            "wipers": WiperState,
+            "climate_mode": ClimateMode,
+            "seat_heating": SeatHeatingLevel,
+        }
+
+        possible_values = {
+            "windows": [e.value for e in WindowState],
+            "headlights": [e.value for e in HeadlightState],
+            "lights": [e.value for e in LightState],
+            "ambient": [e.value for e in AmbientLightLevel],
+            "doors": [e.value for e in DoorState],
+            "wipers": [e.value for e in WiperState],
+            "climate_mode": [e.value for e in ClimateMode],
+            "seat_heating": [e.value for e in SeatHeatingLevel],
+            "temperature_c": list(range(16, 29)),  # 16–28°C
+            "fan_level": list(range(0, 6)),        # 0–5 scale
+        }
+
+        # Prepare the prompt
+        prompt = PROMPT_CAR_UPDATE.format(
+            current_state=car_state.get_state(),
+            history=history,
+            query=query,
+            possible_values=possible_values,
+        )
+
+        print("prompt:", prompt)
+
+        # Call the LLM
+        output_str, tokens_input, tokens_output = pass_llm(
+            prompt=prompt,
+            model=llm_model,
+        )
+
+        tokens_query_input += tokens_input
+        tokens_query_output += tokens_output
+
+        output_str = repair_json(output_str)
+        try:
+            result = json.loads(output_str)
+        except json.JSONDecodeError:
+            print("LLM returned invalid JSON:", output_str)
+            return
+
+        # Extract response summary
+        response = result.get("summary", "")
+
+        # Extract changes
+        changes = result.get("changes", [])
+
+        for change in changes:
+            subsystem = change.get("subsystem")
+            target = change.get("target")
+            value = change.get("value")
+
+            if subsystem not in car_state.state or target not in car_state.state[subsystem]:
+                continue  # skip invalid targets
+
+            current_val = car_state.state[subsystem][target]
+
+            # Handle numeric values (temperature, fan level)
+            if isinstance(current_val, (int, float)):
+                if isinstance(value, str):
+                    if value == "increase":
+                        car_state.state[subsystem][target] += 1
+                    elif value == "decrease":
+                        car_state.state[subsystem][target] -= 1
+                else:
+                    car_state.state[subsystem][target] = value
+            else:
+                # Handle enum-based values
+                enum_class = enum_map.get(subsystem, type(current_val))
+                try:
+                    car_state.state[subsystem][target] = enum_class(value)
+                except ValueError:
+                    print(f"Invalid value '{value}' for {subsystem}.{target}")
+
+        # Final outputs
+        pois_output = car_state.get_state()
+
+
+        # response, tokens_input, tokens_input = pass_llm(prompt=PROMPT_CAR_RESPONSE.format("query",
+        #                                                                                      changes),
+        #                                                                                      model = llm_model)
+        # tokens_query_input += tokens_input
+        # tokens_query_output += tokens_input
+    else:
+        return ValueError("Intent not supported.")
 
     session.complete(response, retrieved_pois = pois_output)
 
