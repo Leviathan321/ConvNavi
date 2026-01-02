@@ -18,13 +18,28 @@ def sanitize_for_json(obj):
 
 def extract_json(text):
     try:
-        match = re.search(r"\{.*\}", text, re.DOTALL)
-        if match:
-            json_str = match.group(0)
+        match = re.search(r"\{.*\}", text, re.DOTALL) 
+        if match: 
+            json_str = match.group(0) 
             return json.loads(json_str)
-    except json.JSONDecodeError:
-        pass
+    except json.JSONDecodeError: 
+        pass 
     return None
+
+def extract_json_list(text):
+    match = re.search(r"(\[.*\]|\{.*\})", text, re.DOTALL)
+    if not match:
+        raise json.JSONDecodeError("No JSON found", text, 0)
+
+    json_str = match.group(1)
+    parsed = json.loads(json_str)
+
+    if isinstance(parsed, list):
+        return parsed
+    if isinstance(parsed, dict):
+        return [parsed]
+
+    raise json.JSONDecodeError("JSON is neither object nor array", json_str, 0)
 
 def clean_json(obj):
     """

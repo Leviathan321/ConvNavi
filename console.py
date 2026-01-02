@@ -38,7 +38,7 @@ if __name__ == "__main__":
                 user_location=user_location,
                 embeddings=embeddings,
                 df=df,
-                use_nlu = USE_NLU
+                use_nlu = USE_NLU               
             )
             print(json.dumps(output, indent=2))
         except Exception as e:
