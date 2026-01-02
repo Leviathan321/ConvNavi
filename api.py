@@ -44,10 +44,12 @@ class POIQueryRequest(BaseModel):
     rating: Optional[float] = None
     name: Optional[str] = None
     user_location: Optional[Tuple[float, float]] = Field(default=user_location)
+    parking: Optional[str] = None
     
 class POIExistsResponse(BaseModel):
     exists: bool
     matching_pois: List[Dict[str, Any]]
+    
 # Route
 @app.post("/query")
 def query_handler(request: QueryRequest):
