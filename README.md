@@ -1,5 +1,11 @@
 
-# Simple Navigation Recommendation System
+# ConvNavi: LLM-Based Place Search
+
+## Overview
+
+<p align="center"><img src="./figures/architecture.svg" alt="Architecture of ConvNavi" width="600"></p>
+
+Convnavi is a prototypical research implementation of a navigational/Point-of-Interest (POI) recommendation system. It receives as input textual requests regarding POIs and returns POIs from a database that should satisfy POI constraints/attributes provided in the input. The system is using internally an LLM to convert requests into a structured representation to retrieve a set of useful POIs from the database using Retrieval Augmented Generation (RAG). It returns afterwards to the user an LLM-based summerization of the found POIs and the found POIs.
 
 ## Setup Instructions
 
@@ -118,6 +124,28 @@ Hi, direct me to a fine Italian restaurant with more than 4 stars.
 
 - [x] POI Search
 - [x] Non POI Requests
-- [x] Car Functions
+- [x] Car Functions (only console mode)
 - [x] Conversation up to X Turns (defined in .env)
 - [ ] Support other backend/POI-data
+
+
+## Citation
+
+The system was originally introduced in the [STELLAR paper](https://arxiv.org/abs/2503.07222).
+
+If you use ConvNavi in your research, if you extend it, or if you simply like it, please cite it in your publications. 
+
+Here is an example BibTeX entry:
+
+```
+@article{
+}
+```
+
+## License
+
+The software is distributed under MIT license. See the [license](/LICENSE) file.
+
+## Authors
+
+Lev Sorokin (lev.sorokin@tum.de)
