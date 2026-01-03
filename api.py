@@ -33,7 +33,8 @@ embeddings, df= get_embeddings_and_df(path_dataset,
 class QueryRequest(BaseModel):
     query: str
     user_location: Optional[Tuple[float, float]] = Field(default=user_location)
-    llm_type: str = None
+    llm_type: Optional[str] = "gpt-4o-mini"
+    user_id: Optional[int] = 1
     
 class POIQueryRequest(BaseModel):
     category: Optional[str] = None
@@ -54,6 +55,7 @@ class POIExistsResponse(BaseModel):
 @app.post("/query")
 def query_handler(request: QueryRequest):
     try:
+        print("Received query:", request)
         # set the llm to be used for answering
         if request.llm_type is not None:
             os.environ['LLM_MODEL'] = request.llm_type
@@ -65,7 +67,8 @@ def query_handler(request: QueryRequest):
             embeddings=embeddings,
             df=df,
             use_nlu=USE_NLU,
-            llm_model=llm_model
+            llm_model=llm_model,
+            user_id=request.user_id
         )
         return output
     except Exception as e:
@@ -102,7 +105,8 @@ if __name__ == "__main__":
                 user_location=user_location,
                 embeddings=embeddings,
                 df=df,
-                use_nlu=USE_NLU
+                use_nlu=USE_NLU,
+                user_id = 1
             )
             print(json.dumps(output, indent=2))
         except Exception as e:

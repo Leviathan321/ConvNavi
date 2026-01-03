@@ -29,8 +29,6 @@ top_k = int(os.environ.get("TOP_K", 3))
 # Load embedding model once
 model = SentenceTransformer('all-MiniLM-L6-v2')
 
-car_state = CarState()
-
 INTENT_NO_NLU = os.getenv("INTENT_NO_NLU", "poi").lower()
 
 def embed_texts(texts):
@@ -193,15 +191,20 @@ def run_rag_navigation(query,
                        embeddings, 
                        df, 
                        use_nlu = True,
-                       llm_model =    os.environ['LLM_MODEL']):
+                       llm_model = os.environ['LLM_MODEL'],
+                       user_id = 1):
     print("NLU active:", use_nlu)
-    session_manager= SessionManager.get_instance()
-    session = session_manager.get_active_session()
+    session_manager = SessionManager.get_instance()
+
+    session = session_manager.get_session(user_id)
+
     if session is None or session.len() >= session.max_turns:
         print("Creating new session...")
-        session = session_manager.create_session()
+        session = session_manager.create_session(user_id)
     
-    history = session_manager.get_active_session().get_history()
+    print("User ID:", user_id, "Session ID:", session.id)
+
+    history = session_manager.get_session(user_id).get_history()
 
     turn = Turn(question=query, answer=None, retrieved_pois=[])
     session.add_turn(turn)
@@ -271,6 +274,8 @@ def run_rag_navigation(query,
             "fan_level": list(range(0, 6)),        # 0–5 scale
         }
 
+        car_state = session.car_state
+
         # Prepare the prompt
         prompt = PROMPT_CAR_UPDATE.format(
             current_state=car_state.get_state(),
@@ -333,7 +338,6 @@ def run_rag_navigation(query,
         # Final outputs
         pois_output = car_state.get_state()
 
-
         # response, tokens_input, tokens_input = pass_llm(prompt=PROMPT_CAR_RESPONSE.format("query",
         #                                                                                      changes),
         #                                                                                      model = llm_model)
@@ -348,6 +352,7 @@ def run_rag_navigation(query,
         "response": response,
         "retrieved_pois": pois_output,
         "session_id": session.id,
+        "user_id": user_id,
         "tokens_total": get_total_tokens(),
         "tokens_query_input": tokens_query_input,
         "tokens_query_output": tokens_query_output,
@@ -418,7 +423,7 @@ def save_data(df, embeddings, df_path="data/filtered_pois.csv", emb_path="data/e
 
 def load_data(df_path="filtered_pois.csv", emb_path="embeddings.npy"):
     if os.path.exists(df_path) and os.path.exists(emb_path):
-        df = pd.read_csv(df_path, encoding='latin1')
+        df = pd.read_csv(df_path, encoding='utf-8')
         embeddings = np.load(emb_path)
         return df, embeddings
     else:
