@@ -131,7 +131,7 @@ Hi, direct me to a fine Italian restaurant with more than 4 stars.
 
 ## Citation
 
-The system was originally introduced in the [STELLAR paper](https://arxiv.org/abs/2503.07222).
+A preprint of the paper can be found on [arXiv](https://arxiv.org/abs/2601.00497).
 
 If you use ConvNavi in your research, if you extend it, or if you simply like it, please cite it in your publications. 
 
