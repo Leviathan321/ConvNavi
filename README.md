@@ -138,7 +138,14 @@ If you use ConvNavi in your research, if you extend it, or if you simply like it
 Here is an example BibTeX entry:
 
 ```
-@article{
+@misc{sorokin2026stellar,
+      title={STELLAR: A Search-Based Testing Framework for Large Language Model Applications}, 
+      author={Lev Sorokin and Ivan Vasilev and Ken E. Friedl and Andrea Stocco},
+      year={2026},
+      eprint={2601.00497},
+      archivePrefix={arXiv},
+      primaryClass={cs.SE},
+      url={https://arxiv.org/abs/2601.00497}, 
 }
 ```
 
