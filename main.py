@@ -17,8 +17,9 @@ from models import SessionManager, Turn
 from sentence_transformers import SentenceTransformer, util
 import torch
 import traceback
+import ast  # for safely evaluating the string dict
 
-from prompts import PROMPT_CAR_RESPONSE, PROMPT_GENERATE_RECOMMENDATION, PROMPT_NLU, PROMPT_PARSE_CONSTRAINTS, PROMPT_NLU_WITH_CAR, PROMPT_CAR_UPDATE
+from prompts import PROMPT_CAR_RESPONSE, PROMPT_CHECK_IF_STOP, PROMPT_GENERATE_RECOMMENDATION, PROMPT_NLU, PROMPT_PARSE_CONSTRAINTS, PROMPT_NLU_WITH_CAR, PROMPT_CAR_UPDATE
 from utils.file import load_jsonl_to_df
 from utils.format import clean_json, extract_json, extract_json_list
 
@@ -41,16 +42,22 @@ def preprocess_poi_json(row):
     price_level = row.get('price_level', None)
     return f"{row.get('name', '')}, a {categories} place rated {rating}/5 at {row.get('address', '')}. Price: {price_level if price_level else 'N/A'}."
 
+def check_if_user_wants_to_stop(response: str) -> bool:
+    prompt,  input_tokens, output_tokens = pass_llm(prompt=PROMPT_CHECK_IF_STOP.format(response))
+    response = extract_json(repair_json(prompt))
+    return response.get("stop", False),  input_tokens, output_tokens 
+
 def parse_query_to_constraints(query: str, 
                                history: str = "",
                                llm_model: str = ""):
     prompt = PROMPT_PARSE_CONSTRAINTS.format(history, query)
+
     #print("prompt:", prompt)
     response, input_tokens, output_tokens = pass_llm(prompt,
                         model = llm_model)
     #print("response before repair:", response)
     response = extract_json(repair_json(response))
-    print("reponse after:", response)
+    # print("reponse after:", response)
     return response, input_tokens, output_tokens
 
 def apply_structured_filters(df, intent, user_location, 
@@ -182,72 +189,163 @@ def generate_recommendation(query, pois_df, llm_model):
 def nlu(query: str, history: str = ""):
     prompt=PROMPT_NLU_WITH_CAR.format(query, history)
     response, tokens_input, tokens_output = pass_llm(prompt)
-    print(response)
-    print(extract_json(response))
+    # print(response)
+    # print(extract_json(response))
     return extract_json(response), tokens_input, tokens_output
 
-def run_rag_navigation(query, 
-                       user_location, 
-                       embeddings, 
-                       df, 
-                       use_nlu = True,
-                       llm_model = os.environ['LLM_MODEL'],
-                       user_id = 1):
+def run_rag_navigation(
+    query,
+    user_location,
+    embeddings,
+    df,
+    use_nlu=True,
+    llm_model=os.environ["LLM_MODEL"],
+    user_id=1,
+):
     print("NLU active:", use_nlu)
-    session_manager = SessionManager.get_instance()
 
+    session_manager = SessionManager.get_instance()
     session = session_manager.get_session(user_id)
 
     if session is None or session.len() >= session.max_turns:
         print("Creating new session...")
         session = session_manager.create_session(user_id)
-    
+
     print("User ID:", user_id, "Session ID:", session.id)
 
-    history = session_manager.get_session(user_id).get_history()
-
-    turn = Turn(question=query, answer=None, retrieved_pois=[])
-    session.add_turn(turn)
+    history = session.get_history()
 
     tokens_query_input = 0
     tokens_query_output = 0
 
+    # --------------------
     # NLU
-    print("history:", history)
-    nlu_parsed = {}
+    # --------------------
     if use_nlu:
         nlu_parsed, tokens_input, tokens_output = nlu(query, history)
         tokens_query_input += tokens_input
         tokens_query_output += tokens_output
-        print("nlu: ", nlu_parsed)
     else:
-        nlu_parsed["intent"] = INTENT_NO_NLU.upper()
-        print("intent set to: ", nlu_parsed["intent"])
+        nlu_parsed = {"intent": INTENT_NO_NLU.upper()}
 
-    if nlu_parsed["intent"] not in ("POI", "CAR"):
-        response = nlu_parsed["response"]
-        pois_output = []
+    intent = nlu_parsed.get("intent")
     
-    if nlu_parsed["intent"] == "POI":
-        poi_constraints, input_tokens, output_tokens = parse_query_to_constraints(query, history = history, llm_model = llm_model)
-        print("[INFO] Parsed poi intent:", poi_constraints)
-        df_filtered = apply_structured_filters(df, poi_constraints, user_location)
+    def stop_conversation(response,
+                          session, user_id,
+                          tokens_query_input, tokens_query_output):
+        response = nlu_parsed.get("response", "Okay, ending the conversation.")
+        pois_output = []
+
+        # finalize turn
+        session.add_turn(Turn(question=query, answer=None, retrieved_pois=[]))
+        session.complete(response, retrieved_pois=pois_output)
+
+        return {
+            "response": response,
+            "retrieved_pois": pois_output,
+            "session_id": session.id,
+            "user_id": user_id,
+            "tokens_total": get_total_tokens(),
+            "tokens_query_input": tokens_query_input,
+            "tokens_query_output": tokens_query_output,
+            "price_query": get_query_costs(),
+            "price_total": get_total_costs(),
+            "conversation_finished": True,
+        }
+    
+    if intent in ("STOP"):
+        return stop_conversation(response,
+                          session, user_id,
+                          tokens_query_input, tokens_query_output)
+    # --------------------
+    # HISTORY / META TURN
+    # --------------------
+    if intent not in ("POI", "CAR"):
+        response = nlu_parsed.get("response", "")
+        pois_output = []
+
+        # open + complete turn
+        session.add_turn(Turn(question=query, answer=None, retrieved_pois=[]))
+        session.complete(response, retrieved_pois=pois_output)
+
+        return {
+            "response": response,
+            "retrieved_pois": pois_output,
+            "session_id": session.id,
+            "user_id": user_id,
+            "tokens_total": get_total_tokens(),
+            "tokens_query_input": tokens_query_input,
+            "tokens_query_output": tokens_query_output,
+            "price_query": get_query_costs(),
+            "price_total": get_total_costs(),
+        }
+
+    # --------------------
+    # POI INTENT (MULTI-TURN)
+    # --------------------
+    if intent == "POI":
+        # check if user wants to stop
+        do_stop,  input_tokens, output_tokens  = check_if_user_wants_to_stop(query)
+        print ("[INFO] User wants to stop:", do_stop)
+        tokens_query_input += input_tokens
+        tokens_query_output += output_tokens
+
+        if do_stop:
+            print("[INFO] User wants to stop the conversation.")
+            return stop_conversation("Stopping the conversation as requested.",
+                          session, user_id,
+                          tokens_query_input, tokens_query_output)
+        
+        new_constraints, input_tokens, output_tokens = parse_query_to_constraints(
+            query, history=history, llm_model=llm_model
+        )
         
         tokens_query_input += input_tokens
         tokens_query_output += output_tokens
 
-        retrieved_pois = retrieve_top_k_semantically(query, df_filtered, embeddings=embeddings, k=top_k)
-        response, input_tokens, output_tokens = generate_recommendation(query, retrieved_pois, llm_model = llm_model)
-   
+        print("[INFO] Session POI constraints:", session.poi_constraints)
+
+        # accumulate constraints across turns
+        session.poi_constraints.update(
+            {k: v for k, v in new_constraints.items() if v is not None}
+        )
+        
+        print("[INFO] Accumulated POI constraints:", session.poi_constraints)
+
+        df_filtered = apply_structured_filters(
+            df, session.poi_constraints, user_location
+        )
+
+        retrieved_pois = retrieve_top_k_semantically(
+            query, df_filtered, embeddings=embeddings, k=top_k
+        )
+
+        response, input_tokens, output_tokens = generate_recommendation(
+            query, retrieved_pois, llm_model=llm_model
+        )
+
         tokens_query_input += input_tokens
         tokens_query_output += output_tokens
 
-        print(response)
-        pois_output = retrieved_pois[[
-            'name', 'category', 'rating', 'price_level', 'address', 'latitude', 'longitude', "parking"
-        ]].to_dict(orient="records")
+        pois_output = retrieved_pois[
+            [
+                "name",
+                "category",
+                "rating",
+                "price_level",
+                "address",
+                "latitude",
+                "longitude",
+                "parking",
+            ]
+        ].to_dict(orient="records")
+
         pois_output = [clean_json(poi) for poi in pois_output]
-    elif nlu_parsed["intent"] == "CAR":
+
+    # --------------------
+    # CAR INTENT (UNCHANGED)
+    # --------------------
+    elif intent == "CAR":
         print("CAR intent")
 
         enum_map = {
@@ -270,13 +368,12 @@ def run_rag_navigation(query,
             "wipers": [e.value for e in WiperState],
             "climate_mode": [e.value for e in ClimateMode],
             "seat_heating": [e.value for e in SeatHeatingLevel],
-            "temperature_c": list(range(16, 29)),  # 16–28°C
-            "fan_level": list(range(0, 6)),        # 0–5 scale
+            "temperature_c": list(range(16, 29)),
+            "fan_level": list(range(0, 6)),
         }
 
         car_state = session.car_state
 
-        # Prepare the prompt
         prompt = PROMPT_CAR_UPDATE.format(
             current_state=car_state.get_state(),
             history=history,
@@ -284,28 +381,17 @@ def run_rag_navigation(query,
             possible_values=possible_values,
         )
 
-        print("prompt:", prompt)
-
-        # Call the LLM
         output_str, tokens_input, tokens_output = pass_llm(
-            prompt=prompt,
-            model=llm_model,
+            prompt=prompt, model=llm_model
         )
 
         tokens_query_input += tokens_input
         tokens_query_output += tokens_output
 
         output_str = repair_json(output_str)
-        try:
-            result = json.loads(output_str)
-        except json.JSONDecodeError:
-            print("LLM returned invalid JSON:", output_str)
-            return
+        result = json.loads(output_str)
 
-        # Extract response summary
         response = result.get("summary", "")
-
-        # Extract changes
         changes = result.get("changes", [])
 
         for change in changes:
@@ -314,39 +400,31 @@ def run_rag_navigation(query,
             value = change.get("value")
 
             if subsystem not in car_state.state or target not in car_state.state[subsystem]:
-                continue  # skip invalid targets
+                continue
 
             current_val = car_state.state[subsystem][target]
 
-            # Handle numeric values (temperature, fan level)
             if isinstance(current_val, (int, float)):
-                if isinstance(value, str):
-                    if value == "increase":
-                        car_state.state[subsystem][target] += 1
-                    elif value == "decrease":
-                        car_state.state[subsystem][target] -= 1
+                if value == "increase":
+                    car_state.state[subsystem][target] += 1
+                elif value == "decrease":
+                    car_state.state[subsystem][target] -= 1
                 else:
                     car_state.state[subsystem][target] = value
             else:
-                # Handle enum-based values
                 enum_class = enum_map.get(subsystem, type(current_val))
-                try:
-                    car_state.state[subsystem][target] = enum_class(value)
-                except ValueError:
-                    print(f"Invalid value '{value}' for {subsystem}.{target}")
+                car_state.state[subsystem][target] = enum_class(value)
 
-        # Final outputs
         pois_output = car_state.get_state()
 
-        # response, tokens_input, tokens_input = pass_llm(prompt=PROMPT_CAR_RESPONSE.format("query",
-        #                                                                                      changes),
-        #                                                                                      model = llm_model)
-        # tokens_query_input += tokens_input
-        # tokens_query_output += tokens_input
     else:
-        return ValueError("Intent not supported.")
+        raise ValueError("Intent not supported")
 
-    session.complete(response, retrieved_pois = pois_output)
+    # --------------------
+    # FINALIZE TURN
+    # --------------------
+    session.add_turn(Turn(question=query, answer=None, retrieved_pois=[]))
+    session.complete(response, retrieved_pois=pois_output)
 
     return {
         "response": response,
@@ -357,10 +435,8 @@ def run_rag_navigation(query,
         "tokens_query_input": tokens_query_input,
         "tokens_query_output": tokens_query_output,
         "price_query": get_query_costs(),
-        "price_total": get_total_costs()
+        "price_total": get_total_costs(),
     }
-
-import ast  # for safely evaluating the string dict
 
 def load_dataset(path_dataset, nrows, filter_city):
     df = load_jsonl_to_df(path_dataset)  # load entire or sufficient dataset

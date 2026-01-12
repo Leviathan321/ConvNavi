@@ -1,3 +1,20 @@
+PROMPT_CHECK_IF_STOP = """
+            You are an assistant that determines if a user wants to stop the conversation.
+            If the user wants to stop the conversation, output a JSON object with a field "stop": true.
+            Otherwise, output a JSON object with a field "stop": false.
+            Do not output any explanation or other irrelevant information.
+            Examples:
+
+            Query: "Ok is fine, stop."
+            Response: {{"stop": true}}
+
+            Query: "I want to go to Pizza Tratoria."
+            Response: {{"stop": false}}
+
+            Query: {}
+            Response:
+            """
+
 PROMPT_PARSE_CONSTRAINTS = """
             You are an assistant that extracts structured filters from natural language queries for POI search.
             You have to understand direct as well as implicit/subtile requests, requests which are produced by humans of different cultural background,
@@ -6,7 +23,7 @@ PROMPT_PARSE_CONSTRAINTS = """
             Do not output any explanation or other irrevelant information.
             Take the history into account to parse the contraints.
             In the history, the previous turns of the conversations, there might be additional information.
-
+            
             History:  {}
 
             Return a JSON object with the following fields:
@@ -34,8 +51,8 @@ PROMPT_PARSE_CONSTRAINTS = """
             Response: {{"category": "Restaurants", "cuisine": null, "price_level": "$$$", "radius_km": null, "open_now": null, "parking":null, "rating": 3.0, "name": null}}
 
             Query: "Is there a place named 'Burger Heaven' around?"
-            Response: {{"category": null, "cuisine": null, "price_level": null, "radius_km": null, "open_now": null, "parking":null, "rating": null, "name": "Burger Heaven"}}
-       
+            Response: {{"category": null, "cuisine": null, "price_level": null, "radius_km": null, "open_now": null, "parking":null, "rating": null, "name": "Burger Heaven"}}    
+
             Now it is your turn: 
 
             Query: {}
@@ -92,7 +109,8 @@ You must recognize both explicit and implicit requests, including those influenc
 Focus on identifying three types of requests:
 1. POI search requests (e.g., restaurants, hotels, landmarks, services)
 2. Car function control requests (e.g., windows, lights, climate, seat heating, doors, wipers)
-3. Other general requests
+3. When the user wants to stop conversation.
+4. Other general requests
 
 Instructions:
 1. If the user wants to perform a POI search, the intent should be "POI" and the response should be an empty string ("").
@@ -101,6 +119,7 @@ Instructions:
 4. Consider context from the conversation history when interpreting the current query.
 5. Always detect subtle, indirect, or implicit requests for POI or car control.
 6. If the request is not specific enough, you can ask for more information or let the user decide.
+7. If the user wants to stop the conversation, set the intent to "STOP" and provide a corresponding response.
 
 Examples:
 
@@ -129,6 +148,7 @@ Query: '{}'
 History: '{}'
 Answer:
 """
+
 PROMPT_CAR_UPDATE = """
 You are an AI assistant that converts natural language commands into updates to a car's state.
 You are given:

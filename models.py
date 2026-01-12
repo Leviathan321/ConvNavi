@@ -15,14 +15,16 @@ class Turn(object):
     answer: str
     retrieved_pois: List[dict]
 
-
 @dataclass
 class Session(object):
     id: int
     turns: list = field(default_factory=list)
     max_turns: int = int(os.getenv("MAX_TURNS"))
     tokens: dict = field(default_factory=dict)
-    car_state: CarState = field(default_factory=CarState)  # per-session car state (is reset)
+    car_state: CarState = field(default_factory=CarState)
+
+    # NEW: persistent POI dialogue state
+    poi_constraints: Dict = field(default_factory=dict)
 
     def add_turn(self, turn: Turn):
         if len(self.turns) >= self.max_turns:
