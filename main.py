@@ -202,16 +202,16 @@ def run_rag_navigation(
     llm_model=os.environ["LLM_MODEL"],
     user_id=1,
 ):
-    print("NLU active:", use_nlu)
+    print("[DEBUG] NLU active:", use_nlu)
 
     session_manager = SessionManager.get_instance()
     session = session_manager.get_session(user_id)
 
     if session is None or session.len() >= session.max_turns:
-        print("Creating new session...")
+        print("[DEBUG] Creating new session...")
         session = session_manager.create_session(user_id)
 
-    print("User ID:", user_id, "Session ID:", session.id)
+    print("[DEBUG] User ID:", user_id, "Session ID:", session.id)
 
     history = session.get_history()
 
@@ -346,7 +346,7 @@ def run_rag_navigation(
     # CAR INTENT (UNCHANGED)
     # --------------------
     elif intent == "CAR":
-        print("CAR intent")
+        print("[DEBUG] CAR intent")
 
         enum_map = {
             "windows": WindowState,
@@ -511,12 +511,12 @@ def get_embeddings_and_df(path_dataset,
                           emb_path ="data/embeddings.npy",
                           nrows= None):
     df, embeddings = load_data(df_path, emb_path)
-    print("Loading dataset.")
+    print("[INFO] Loading dataset.")
     if df is None or embeddings is None:
         df = load_dataset(path_dataset, nrows=nrows, filter_city=filter_city)
         embeddings = create_embeddings(df)
         save_data(df, embeddings, df_path, emb_path)
-        print("Dataset loaded.")
+        print("[INFO] Dataset loaded.")
     return embeddings, df
 
 if __name__ == "__main__":
@@ -541,6 +541,5 @@ if __name__ == "__main__":
                                                emb_path)
         print("\n--- RAG Recommendation System ---\n")
         output = run_rag_navigation(query, user_location, embeddings, df=df)
-
         print(output["response"])
         print(json.dumps(output["retrieved_pois"], indent=2))

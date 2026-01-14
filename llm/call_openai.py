@@ -38,8 +38,6 @@ def call_openai(prompt,
     response_msg = response.choices[0].message.content
     return response_msg, input_tokens, output_tokens
 
-    return response.choices[0].message.content, input_tokens, output_tokens
-
 def call_openai_gpt5_models(prompt, 
              max_completion_tokens = 200, 
              temperature = 0, 

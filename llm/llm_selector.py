@@ -75,17 +75,16 @@ def pass_llm(prompt,
                   deployment_name=model)        
         else:
             raise ValueError("Model is not known.")
-        print("Used LLM for processing: ",model)
+        
+        print("[INFO] Used LLM for processing: ",model)
 
         TOTAL_TOKENS = TOTAL_TOKENS + input_tokens + output_tokens
         TOTAL_TOKENS_IN = TOTAL_TOKENS_IN + input_tokens
         TOTAL_TOKENS_OUT = TOTAL_TOKENS_OUT + output_tokens
 
         if model in rates:
-            print(model)
             TOTAL_COSTS = TOTAL_COSTS + rates[model]["input"] * input_tokens/1000 + rates[model]["output"]  * output_tokens/1000
             QUERY_COSTS = rates[model]["input"] * input_tokens/1000 + rates[model]["output"]  * output_tokens/1000
-
         return response, input_tokens, output_tokens
     except Exception as e:
         print("=== LLM CALL FAILED ===")

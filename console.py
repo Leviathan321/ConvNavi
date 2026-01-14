@@ -40,6 +40,10 @@ if __name__ == "__main__":
                 df=df,
                 use_nlu = USE_NLU               
             )
-            print(json.dumps(output, indent=2))
+            print("--------------------------------")
+            print("output", json.dumps(output, indent=2))
+            print("--------------------------------")
+            print(">", user_query)
+            print(">>", output["response"])
         except Exception as e:
             print(f"Error: {e}")
