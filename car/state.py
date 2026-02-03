@@ -105,3 +105,53 @@ class CarState:
 
     def set(self, domain: str, key: str, value: Any) -> None:
         self.state[domain][key] = value
+
+ENUM_MAP = {
+    "windows": {
+        "front_left": WindowState,
+        "front_right": WindowState,
+        "rear_left": WindowState,
+        "rear_right": WindowState,
+    },
+    "lights": {
+        "headlights": HeadlightState,
+        "fog_lights": LightState,
+        "interior_front": LightState,
+        "interior_rear": LightState,
+        "ambient": AmbientLightLevel,
+    },
+    "doors": {
+        "front_left": DoorState,
+        "front_right": DoorState,
+        "rear_left": DoorState,
+        "rear_right": DoorState,
+        "trunk": DoorState,
+    },
+    "climate": {
+        "mode": ClimateMode,
+        "temperature_c": float,
+        "fan_level": int,
+    },
+    "wipers": {
+        "state": WiperState,
+    },
+    "seat_heating": {
+        "driver": SeatHeatingLevel,
+        "front_passenger": SeatHeatingLevel,
+    },
+}
+
+POSSIBLE_CAR_VALUES = {
+    "windows": [e.value for e in WindowState],
+    "headlights": [e.value for e in HeadlightState],
+    "fog_lights": [e.value for e in LightState],
+    "interior_front": [e.value for e in LightState],
+    "interior_rear": [e.value for e in LightState],
+    "ambient": [e.value for e in AmbientLightLevel],
+    "doors": [e.value for e in DoorState],
+    "wipers": [e.value for e in WiperState],
+    "climate_mode": [e.value for e in ClimateMode],
+    "seat_heating": [e.value for e in SeatHeatingLevel],
+    "temperature_c": list(range(16, 29)),
+    "fan_level": list(range(0, 6)),
+}

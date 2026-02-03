@@ -10,7 +10,7 @@ from geopy.distance import geodesic
 from datetime import datetime
 import json
 import re
-from car.state import AmbientLightLevel, CarState, ClimateMode, DoorState, HeadlightState, LightState, SeatHeatingLevel, WindowState, WiperState
+from car.state import ENUM_MAP, POSSIBLE_CAR_VALUES
 from llm.llm_selector import pass_llm, get_total_tokens, get_total_costs, get_query_costs # Your LLM call function
 import os
 from models import SessionManager, Turn
@@ -348,37 +348,13 @@ def run_rag_navigation(
     elif intent == "CAR":
         print("[DEBUG] CAR intent")
 
-        enum_map = {
-            "windows": WindowState,
-            "lights": LightState,
-            "headlights": HeadlightState,
-            "ambient": AmbientLightLevel,
-            "doors": DoorState,
-            "wipers": WiperState,
-            "climate_mode": ClimateMode,
-            "seat_heating": SeatHeatingLevel,
-        }
-
-        possible_values = {
-            "windows": [e.value for e in WindowState],
-            "headlights": [e.value for e in HeadlightState],
-            "lights": [e.value for e in LightState],
-            "ambient": [e.value for e in AmbientLightLevel],
-            "doors": [e.value for e in DoorState],
-            "wipers": [e.value for e in WiperState],
-            "climate_mode": [e.value for e in ClimateMode],
-            "seat_heating": [e.value for e in SeatHeatingLevel],
-            "temperature_c": list(range(16, 29)),
-            "fan_level": list(range(0, 6)),
-        }
-
         car_state = session.car_state
 
         prompt = PROMPT_CAR_UPDATE.format(
             current_state=car_state.get_state(),
             history=history,
             query=query,
-            possible_values=possible_values,
+            possible_values=POSSIBLE_CAR_VALUES,
         )
 
         output_str, tokens_input, tokens_output = pass_llm(
@@ -394,6 +370,8 @@ def run_rag_navigation(
         response = result.get("summary", "")
         changes = result.get("changes", [])
 
+        # print("Applying changes to car state:", changes)
+
         for change in changes:
             subsystem = change.get("subsystem")
             target = change.get("target")
@@ -404,6 +382,8 @@ def run_rag_navigation(
 
             current_val = car_state.state[subsystem][target]
 
+            # print("Current value:", current_val, "New value:", value)
+            
             if isinstance(current_val, (int, float)):
                 if value == "increase":
                     car_state.state[subsystem][target] += 1
@@ -412,7 +392,9 @@ def run_rag_navigation(
                 else:
                     car_state.state[subsystem][target] = value
             else:
-                enum_class = enum_map.get(subsystem, type(current_val))
+                enum_class = ENUM_MAP[subsystem][target]
+                # print("target", target)
+                # print("enum_class", enum_class)
                 car_state.state[subsystem][target] = enum_class(value)
 
         pois_output = car_state.get_state()

@@ -41,9 +41,9 @@ if __name__ == "__main__":
                 use_nlu = USE_NLU               
             )
             print("--------------------------------")
-            print("output", json.dumps(output, indent=2))
+            print("output:", json.dumps(output, indent=2))
             print("--------------------------------")
             print(">", user_query)
-            print(">>", output["response"])
+            print("<", output["response"])
         except Exception as e:
             print(f"Error: {e}")
