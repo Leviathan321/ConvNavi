@@ -1,10 +1,13 @@
+from enum import Enum
 import traceback
 from typing import Any, Dict, List, Optional, Tuple
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 import json
+from car.state import ENUM_MAP, CarState
 from main import get_embeddings_and_df, run_rag_navigation
+from models import Session, SessionManager
 from utils.check import check_if_poi_exists
 from utils.format import sanitize_for_json
 import os
@@ -50,6 +53,10 @@ class POIQueryRequest(BaseModel):
 class POIExistsResponse(BaseModel):
     exists: bool
     matching_pois: List[Dict[str, Any]]
+
+class InitialCarStateRequest(BaseModel):
+    user_id: Optional[int] = 1
+    car_state: Dict[str, Dict[str, Any]]  # mirrors CarState.state
     
 # Route
 @app.post("/query")
@@ -93,6 +100,53 @@ def poi_exists(constraints: POIQueryRequest):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
+def set_initial_car_state(session: Session, raw_state: Dict[str, Dict[str, Any]]):
+    """
+    Replace the session's CarState with the given validated initial state.
+    """
+    car_state: CarState = session.car_state
+
+    for subsystem, targets in raw_state.items():
+        if subsystem not in car_state.state:
+            raise ValueError(f"Unknown subsystem: {subsystem}")
+
+        for target, value in targets.items():
+            if target not in car_state.state[subsystem]:
+                raise ValueError(f"Unknown target: {subsystem}.{target}")
+
+            expected_type = ENUM_MAP[subsystem][target]
+
+            # Enum case
+            if issubclass(expected_type, Enum):
+                car_state.state[subsystem][target] = expected_type(value)
+
+            # Numeric case
+            elif expected_type in (int, float):
+                car_state.state[subsystem][target] = expected_type(value)
+
+            else:
+                raise ValueError(f"Unsupported type for {subsystem}.{target}")
+            
+@app.post("/carstate/init")
+def init_car_state(request: InitialCarStateRequest):
+    try:
+        session_manager = SessionManager.get_instance()
+        session = session_manager.get_session(request.user_id)
+
+        if session is None:
+            session = session_manager.create_session(request.user_id)
+
+        set_initial_car_state(session, request.car_state)
+
+        return {
+            "success": True,
+            "car_state": session.car_state.get_state(),
+        }
+
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=400, detail=str(e))
+    
 if __name__ == "__main__":
     import sys
     while True:
