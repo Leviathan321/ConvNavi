@@ -2,21 +2,20 @@ from enum import Enum
 from typing import Dict, Any
 
 
+# ----------------- ENUM DEFINITIONS -----------------
+
 class WindowState(Enum):
     OPEN = "open"
     CLOSED = "closed"
-
 
 class HeadlightState(Enum):
     OFF = "off"
     LOW = "low"
     HIGH = "high"
 
-
 class LightState(Enum):
     OFF = "off"
     ON = "on"
-
 
 class AmbientLightLevel(Enum):
     OFF = "off"
@@ -24,11 +23,9 @@ class AmbientLightLevel(Enum):
     MEDIUM = "medium"
     HIGH = "high"
 
-
 class DoorState(Enum):
     OPEN = "open"
     CLOSED = "closed"
-
 
 class WiperState(Enum):
     OFF = "off"
@@ -36,11 +33,9 @@ class WiperState(Enum):
     LOW = "low"
     HIGH = "high"
 
-
 class ClimateMode(Enum):
     AUTO = "auto"
     MANUAL = "manual"
-
 
 class SeatHeatingLevel(Enum):
     OFF = "off"
@@ -48,10 +43,23 @@ class SeatHeatingLevel(Enum):
     MEDIUM = "medium"
     HIGH = "high"
 
+class RadioState(Enum):
+    OFF = "off"
+    ON = "on"
+
+class MusicGenre(Enum):
+    POP = "pop"
+    ROCK = "rock"
+    JAZZ = "jazz"
+    CLASSICAL = "classical"
+    HIPHOP = "hiphop"
+    ELECTRONIC = "electronic"
+
+# ----------------- CAR STATE -----------------
 class CarState:
     """
     Holds the current state of vehicle functions, including windows,
-    lights, doors, climate, wipers, and seat heating.
+    lights, doors, climate, wipers, seat heating, and media.
     """
 
     def __init__(self) -> None:
@@ -87,10 +95,18 @@ class CarState:
             "seat_heating": {
                 "driver": SeatHeatingLevel.OFF,
                 "front_passenger": SeatHeatingLevel.OFF,
+            },
+            "media": {
+                "volume": 5,
+                "radio_state": RadioState.OFF,
+                "radio_station": 101.1,
+                "music_genre": MusicGenre.POP,  # Always valid
             }
         }
 
+    # ----------------- NORMALIZATION -----------------
     def get_state(self):
+        """Return all states with enums converted to values recursively."""
         def normalize(v):
             if isinstance(v, Enum):
                 return v.value
@@ -99,12 +115,14 @@ class CarState:
             return v
 
         return normalize(self.state)
-    
+
+    # ----------------- GENERIC GET/SET -----------------
     def get(self, domain: str, key: str) -> Any:
         return self.state[domain][key]
 
     def set(self, domain: str, key: str, value: Any) -> None:
         self.state[domain][key] = value
+# ----------------- ENUM MAP -----------------
 
 ENUM_MAP = {
     "windows": {
@@ -139,7 +157,15 @@ ENUM_MAP = {
         "driver": SeatHeatingLevel,
         "front_passenger": SeatHeatingLevel,
     },
+    "media": {
+        "radio_state": RadioState,
+        "volume": int,
+        "radio_station": float,
+        "music_genre": MusicGenre,
+    }
 }
+
+# ----------------- POSSIBLE VALUES -----------------
 
 POSSIBLE_CAR_VALUES = {
     "windows": [e.value for e in WindowState],
@@ -154,4 +180,8 @@ POSSIBLE_CAR_VALUES = {
     "seat_heating": [e.value for e in SeatHeatingLevel],
     "temperature_c": list(range(16, 29)),
     "fan_level": list(range(0, 6)),
+    "media_state": [e.value for e in RadioState],
+    "volume": list(range(0, 11)),
+    "radio_station": [round(x * 0.1, 1) for x in range(880, 1081)],
+    "music_genre": [e.value for e in MusicGenre],  # 88.0 - 108.0 FM
 }

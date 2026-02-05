@@ -377,13 +377,29 @@ def run_rag_navigation(
             target = change.get("target")
             value = change.get("value")
 
-            if subsystem not in car_state.state or target not in car_state.state[subsystem]:
+            if subsystem not in car_state.state:
+                continue
+
+            # # Handle media separately
+            # if subsystem == "media":
+            #     if target == "volume":
+            #         car_state.state["media"]["volume"] = int(value)
+            #     elif target == "state":
+            #         car_state.state["media"]["state"] = RadioState(value)
+            #     elif target == "source":
+            #         car_state.state["media"]["source"] = MediaSource(value)
+            #     elif target == "station":
+            #         car_state.set_radio_station(float(value))
+            #     elif target == "genre":
+            #         car_state.set_genre(str(value))
+            #     continue
+
+            # Generic subsystems
+            if target not in car_state.state[subsystem]:
                 continue
 
             current_val = car_state.state[subsystem][target]
 
-            # print("Current value:", current_val, "New value:", value)
-            
             if isinstance(current_val, (int, float)):
                 if value == "increase":
                     car_state.state[subsystem][target] += 1
@@ -393,8 +409,6 @@ def run_rag_navigation(
                     car_state.state[subsystem][target] = value
             else:
                 enum_class = ENUM_MAP[subsystem][target]
-                # print("target", target)
-                # print("enum_class", enum_class)
                 car_state.state[subsystem][target] = enum_class(value)
 
         pois_output = car_state.get_state()
