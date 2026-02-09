@@ -180,10 +180,10 @@ Final Output Format:
     "summary": "<one short sentence describing the applied changes or a clarification request>"
 }}
 
-If no changes are implied, return:
+If the utterance does not specify a request for activating or changing a component in the car, return empty changes and a response related to the users request.
 {{
     "changes": [],
-    "summary": "No car state change request detected."
+    "summary": <your response>
 }}
 
 Instructions:
