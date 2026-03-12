@@ -1,3 +1,22 @@
+PROMPT_CLASSIFY_ACTION = """You are an assistant inside a car navigation system. 
+The user is searching for a place (POI). Given the conversation history and the user's latest message, classify what the user wants to do.
+
+Conversation history:
+{history}
+
+User message: "{query}"
+
+Classify into exactly one of:
+- "refine": The user is adding, changing, or providing new search preferences/constraints (e.g., "make it cheaper", "Italian food", "with parking", "near me").
+- "confirm": The user is selecting a POI or wants to start navigation to a result (e.g., "start navigation", "the second one", "yes go there", "that one", "let's go").
+- "info": The user is asking for information about a previously suggested place that is NOT a search preference. For example: traffic conditions, weather at the destination, estimated travel time, opening hours, reviews, distance, or any factual question about a place (e.g., "how long to get there?", "what's the traffic like?", "is it raining there?", "how far is it?", "what are the reviews?").
+          If you do not know the information try to invent some realistic information. You can also provide hints where to get it.
+- "stop": The user wants to end the conversation or cancel (e.g., "never mind", "cancel", "stop", "no thanks").
+
+Return ONLY valid JSON:
+{{"action": "refine" | "confirm" | "info" | "stop"}}
+"""
+
 PROMPT_CHECK_IF_STOP = """
             You are an assistant that determines if a user wants to stop the conversation.
             If the user wants to stop the conversation, output a JSON object with a field "stop": true.
@@ -70,6 +89,8 @@ PROMPT_GENERATE_RECOMMENDATION="""User query: "{}"
         if no poi could be found.
         - Try to sound humanlike.
         - Try to be concise. 
+        - Do not repeat the query.
+        - Just summerize the place information with key details.
         """
 
 PROMPT_NLU="""

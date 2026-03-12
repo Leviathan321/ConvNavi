@@ -44,6 +44,13 @@ class Session(object):
         else:
             raise Exception("No open turn to complete.")
 
+    def get_last_retrieved_pois(self) -> List[dict]:
+        """Return POIs from the most recent completed turn that had results."""
+        for turn in reversed(self.turns):
+            if turn.retrieved_pois:
+                return turn.retrieved_pois
+        return []
+
     def len(self):
         return len(self.turns)
 
