@@ -1,20 +1,37 @@
-PROMPT_CLASSIFY_ACTION = """You are an assistant inside a car navigation system. 
-The user is searching for a place (POI). Given the conversation history and the user's latest message, classify what the user wants to do.
+PROMPT_CLASSIFY_ACTION = """
+You are a classifier for a car navigation assistant focused on POI search.
 
 Conversation history:
 {history}
 
-User message: "{query}"
+User query:
+{query}
 
-Classify into exactly one of:
-- "refine": The user is adding, changing, or providing new search preferences/constraints (e.g., "make it cheaper", "Italian food", "with parking", "near me").
-- "confirm": The user is selecting a POI or wants to start navigation to a result (e.g., "start navigation", "the second one", "yes go there", "that one", "let's go").
-- "info": The user is asking for information about a previously suggested place that is NOT a search preference. For example: traffic conditions, weather at the destination, estimated travel time, opening hours, reviews, distance, or any factual question about a place (e.g., "how long to get there?", "what's the traffic like?", "is it raining there?", "how far is it?", "what are the reviews?").
-          If you do not know the information try to invent some realistic information. You can also provide hints where to get it.
-- "stop": The user wants to end the conversation or cancel (e.g., "never mind", "cancel", "stop", "no thanks").
+Decide the user's action. Return ONLY valid JSON:
+{{
+  "action": "refine" | "info" | "confirm" | "stop" | "change_of_mind"
+}}
 
-Return ONLY valid JSON:
-{{"action": "refine" | "confirm" | "info" | "stop"}}
+Definitions:
+- refine: user adds/changes filters for the current POI search (cuisine, price, rating, open now, distance, etc.)
+- info: user asks questions about previously recommended places (hours, address, why recommended, etc.)
+- confirm: user selects a place / wants to start navigation (e.g. "take me to the first one", "navigate there")
+- stop: user wants to end the conversation (e.g. "stop", "cancel", "nevermind end")
+- change_of_mind: user explicitly discards the previous target, and wants to start a new search.
+  (e.g. "forget that", "scratch that", "change of plans"
+
+
+User: "I need to be cheap."
+-> {{"action":"refine"}}
+
+User: "Is the second place open now?"
+-> {{"action":"info"}}
+
+User: "Take me to option 1."
+-> {{"action":"confirm"}}
+
+User: "Stop."
+-> {{"action":"stop"}}
 """
 
 PROMPT_CHECK_IF_STOP = """
@@ -53,7 +70,8 @@ PROMPT_PARSE_CONSTRAINTS = """
             - open_now: true/false/null
             - rating: float between 1.0 and 5.0 or null
             - parking: true/false/null
-            - name: string or null (specific name or partial name of the place)
+            - name: string or null (specific name or partial name of the place). The name is a unique identifier. 
+              While the category is a type of a venue.
 
             Examples (where history is empty):
 

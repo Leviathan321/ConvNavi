@@ -51,8 +51,9 @@ Last recommended places:
 User question: "{query}"
 
 Answer the user's question based on the available information about the places. 
-If the information is not available, say so honestly and suggest the user check a dedicated service (e.g., a weather app, a traffic app).
-Be concise.
+If the information is not available, try to provide some information that makes sense.
+Or direct to a dedicated service (e.g., a weather app, a traffic app).
+Be concise unter 15 words.
 """
 
 
@@ -108,7 +109,7 @@ def apply_structured_filters(df, intent, user_location,
         else:
             df_filtered = filter_contains_in_fields(df_filtered, intent["category"],
                                                     field_names=["category", "name"])
-        print(df_filtered.head())
+        # print(df_filtered.head())
 
     if len(df_filtered) > 0 and intent.get("name"):
         pattern = re.escape(intent["name"])
@@ -351,11 +352,13 @@ def _handle_poi_info(query, session, user_id, history, llm_model,
         tokens_query_input, tokens_query_output
     )
 
-
 def _handle_poi_refine(query, session, user_location, embeddings, df,
                        llm_model, user_id, history,
-                       tokens_query_input, tokens_query_output):
-    """Handle the REFINE action — parse new constraints, retrieve POIs."""
+                       tokens_query_input, tokens_query_output,
+                       reset_constraints: bool = False):
+    """Handle the REFINE action — parse new constraints, retrieve POIs.
+       If reset_constraints=True: start from empty constraints (change of mind).
+    """
     new_constraints, input_tokens, output_tokens = parse_query_to_constraints(
         query, history=history, llm_model=llm_model
     )
@@ -363,6 +366,10 @@ def _handle_poi_refine(query, session, user_location, embeddings, df,
     tokens_query_output += output_tokens
 
     meaningful_constraints = {k: v for k, v in new_constraints.items() if v is not None}
+
+    if reset_constraints:
+        session.poi_constraints = {}
+
     if meaningful_constraints:
         session.poi_constraints.update(meaningful_constraints)
 
@@ -479,13 +486,21 @@ def run_rag_navigation(
                 tokens_query_input, tokens_query_output
             )
 
+        elif action == "change_of_mind":
+            # Same as refine, but start from empty constraints/state
+            return _handle_poi_refine(
+                query, session, user_location, embeddings, df,
+                llm_model, user_id, history,
+                tokens_query_input, tokens_query_output,
+                reset_constraints=True
+            )
+
         elif action == "refine":
             return _handle_poi_refine(
                 query, session, user_location, embeddings, df,
                 llm_model, user_id, history,
                 tokens_query_input, tokens_query_output
             )
-
     raise ValueError(f"Unhandled intent: {intent}")
 
 
