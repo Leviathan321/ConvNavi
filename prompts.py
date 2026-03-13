@@ -15,11 +15,15 @@ Decide the user's action. Return ONLY valid JSON:
 Definitions:
 - refine: user adds/changes filters for the current POI search (cuisine, price, rating, open now, distance, etc.)
 - info: user asks questions about previously recommended places (hours, address, why recommended, etc.)
-- confirm: user selects a place / wants to start navigation (e.g. "take me to the first one", "navigate there")
+- confirm: user selects a place / wants to start navigation (e.g. "take me to the first one", "navigate there", "start navigation")
 - stop: user wants to end the conversation (e.g. "stop", "cancel", "nevermind end")
 - change_of_mind: user explicitly discards the previous target, and wants to start a new search.
   (e.g. "forget that", "scratch that", "change of plans"
 
+Important:
+- You should distinguish very well between a change of mind and confirm. Because change of mind deletes the history poi.
+  If you are not sure, select rather confirm. 
+- If the user says "Start navigation." it it is always a confirm, even if it looks like a change of mind. Because the user wants to start navigation to the last recommended place.
 
 User: "I need to be cheap."
 -> {{"action":"refine"}}
@@ -32,6 +36,30 @@ User: "Take me to option 1."
 
 User: "Stop."
 -> {{"action":"stop"}}
+"""
+PROMPT_POI_CONFIRM_SELECT = """You are a helpful car navigation assistant.
+
+Your task: pick the single POI that the user has CONFIRMED as the destination, based on the conversation history.
+
+Conversation history:
+{history}
+
+Last recommended places (candidates):
+{pois}
+
+Current user message: "{query}"
+
+Return ONLY valid JSON (no markdown, no extra text) in this schema:
+{{
+  "selected_poi_id": string | null,
+  "confidence": "low" | "medium" | "high"
+}}
+
+Selection rules:
+- Choose the POI the user explicitly confirmed (e.g. "yes", "confirm", "let's go", "that one", etc.) referring to a specific place.
+- If the user referenced a number (e.g. "the second one"), map it to that candidate.
+- If the user referenced a name/address, match the closest candidate.
+- If ambiguous or not confirmed, set selected_poi_id to null with confidence "low".
 """
 
 PROMPT_CHECK_IF_STOP = """

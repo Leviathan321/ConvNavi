@@ -48,6 +48,7 @@ class Session(object):
         """Return POIs from the most recent completed turn that had results."""
         for turn in reversed(self.turns):
             if turn.retrieved_pois:
+                print("Last retrieved POIs:", turn.retrieved_pois)
                 return turn.retrieved_pois
         return []
 

@@ -27,6 +27,7 @@ from prompts import (
     PROMPT_NLU_WITH_CAR,
     PROMPT_CAR_UPDATE,
     PROMPT_CLASSIFY_ACTION,
+    PROMPT_POI_CONFIRM_SELECT,
 )
 from utils.file import load_jsonl_to_df
 from utils.format import clean_json, extract_json, extract_json_list
@@ -300,27 +301,92 @@ def _handle_poi_stop(query, session, user_id,
 
 
 def _handle_poi_confirm(query, session, user_id,
-                        tokens_query_input, tokens_query_output):
-    """Handle the CONFIRM action — start navigation to selected POI."""
-    last_pois = session.get_last_retrieved_pois()
+                        tokens_query_input, tokens_query_output,
+                        llm_model=""):
+    """Handle the CONFIRM action — start navigation to the POI the user confirmed (LLM-selected).
 
-    if last_pois:
-        selected_poi = last_pois[0]
-        response = f"Starting navigation to {selected_poi['name']} at {selected_poi['address']}."
-        pois_output = [selected_poi]
-    else:
+    Note: If the LLM cannot confidently select a POI, we do NOT ask the user to clarify here.
+    We fall back to the top-ranked last POI (previous behavior), and still start navigation.
+    """
+    last_pois = session.get_last_retrieved_pois() or []
+
+    if not last_pois:
         response = "I don't have a destination yet. Where would you like to go?"
         pois_output = []
+        _finalize_turn(session, query, response, pois_output)
+        return _build_return_dict(
+            response, pois_output, session, user_id,
+            tokens_query_input, tokens_query_output,
+            navigation_started=False
+        )
+
+    # Build candidates with stable IDs if present; otherwise index fallback.
+    candidates = []
+    for i, p in enumerate(last_pois):
+        poi_id = p.get("id")
+        if poi_id is None:
+            poi_id = str(i)  # fallback id
+        candidates.append({
+            "id": str(poi_id),
+            "rank": i + 1,
+            "name": p.get("name", ""),
+            "address": p.get("address", ""),
+            "category": p.get("category", ""),
+            "rating": p.get("rating", None),
+            "price_level": p.get("price_level", None),
+        })
+
+    history = session.get_history()
+    pois_text = json.dumps(candidates, indent=2, ensure_ascii=False)
+
+    prompt = PROMPT_POI_CONFIRM_SELECT.format(
+        history=history,
+        pois=pois_text,
+        query=query,
+    )
+
+    llm_out, tokens_input, tokens_output = pass_llm(prompt=prompt, model=llm_model)
+    tokens_query_input += tokens_input
+    tokens_query_output += tokens_output
+
+    # Parse model output robustly (same pattern as the rest of your code)
+    try:
+        llm_out = repair_json(llm_out)
+        parsed = extract_json(llm_out)
+    except Exception:
+        parsed = {}
+
+    selected_id = parsed.get("selected_poi_id", None)
+    confidence = parsed.get("confidence", "low")
+
+    selected_poi = None
+    if selected_id is not None:
+        # 1) Try matching on actual POI id (if present)
+        for p in last_pois:
+            if p.get("id") is not None and str(p.get("id")) == str(selected_id):
+                selected_poi = p
+                break
+
+        # 2) If not found, allow index fallback id
+        if selected_poi is None and str(selected_id).isdigit():
+            idx = int(str(selected_id))
+            if 0 <= idx < len(last_pois):
+                selected_poi = last_pois[idx]
+
+    # No user clarification: fallback to previous behavior
+    if selected_poi is None or confidence == "low":
+        selected_poi = last_pois[0]
+
+    response = f"Starting navigation to {selected_poi.get('name')} at {selected_poi.get('address')}."
+    pois_output = [selected_poi]
 
     _finalize_turn(session, query, response, pois_output)
 
     return _build_return_dict(
         response, pois_output, session, user_id,
         tokens_query_input, tokens_query_output,
-        navigation_started=bool(last_pois)
+        navigation_started=True
     )
-
-
 def _handle_poi_info(query, session, user_id, history, llm_model,
                      tokens_query_input, tokens_query_output):
     """Handle the INFO action — answer questions about previously suggested POIs."""
@@ -477,7 +543,8 @@ def run_rag_navigation(
         elif action == "confirm":
             return _handle_poi_confirm(
                 query, session, user_id,
-                tokens_query_input, tokens_query_output
+                tokens_query_input, tokens_query_output,
+                llm_model=llm_model
             )
 
         elif action == "info":
