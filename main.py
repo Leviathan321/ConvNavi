@@ -39,7 +39,7 @@ top_k = int(os.environ.get("TOP_K", 3))
 # Load embedding model once
 model = SentenceTransformer('all-MiniLM-L6-v2')
 
-INTENT_NO_NLU = os.getenv("INTENT_NO_NLU", "poi").lower()
+INTENT_NO_NLU = os.getenv("INTENT_NO_NLU", "poi").upper()
 
 PROMPT_POI_INFO = """You are a helpful car navigation assistant. The user is asking a question about a place.
 
@@ -502,29 +502,30 @@ def run_rag_navigation(
         tokens_query_input += tokens_input
         tokens_query_output += tokens_output
         intent = nlu_parsed.get("intent")
-
-        # Non-POI, non-CAR intents (e.g. greetings, chitchat)
-        if intent not in ("POI", "CAR"):
-            response = nlu_parsed.get("response", "")
-            pois_output = []
-            _finalize_turn(session, query, response, pois_output)
-            return _build_return_dict(
-                response, pois_output, session, user_id,
-                tokens_query_input, tokens_query_output
-            )
-
-        # CAR intent
-        if intent == "CAR":
-            return _handle_car_intent(
-                query, session, history, llm_model,
-                tokens_query_input, tokens_query_output, user_id
-            )
     else:
-        intent = "POI"
+        intent = INTENT_NO_NLU
+
+    # Non-POI, non-CAR intents (e.g. greetings, chitchat)
+    if intent not in ("POI", "CAR"):
+        response = nlu_parsed.get("response", "")
+        pois_output = []
+        _finalize_turn(session, query, response, pois_output)
+        return _build_return_dict(
+            response, pois_output, session, user_id,
+            tokens_query_input, tokens_query_output
+        )
+
+    # CAR intent
+    if intent == "CAR":
+        return _handle_car_intent(
+            query, session, history, llm_model,
+            tokens_query_input, tokens_query_output, user_id
+        )
 
     # --------------------
     # POI FLOW: single classifier → route
     # --------------------
+    print("[DEBUG] Intent:", intent)
     if intent == "POI":
         action, tokens_input, tokens_output = classify_action(
             query, history, llm_model=llm_model
