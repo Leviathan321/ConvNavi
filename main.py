@@ -51,6 +51,8 @@ Last recommended places:
 
 User question: "{query}"
 
+Context is: "{context}"
+
 Answer the user's question based on the available information about the places. 
 If the information is not available, try to provide some information that makes sense.
 Or direct to a dedicated service (e.g., a weather app, a traffic app).
@@ -182,7 +184,7 @@ def retrieve_top_k_semantically(query, df_filtered, embeddings, k=top_k):
     return df_filtered.loc[top_indices]
 
 
-def generate_recommendation(query, pois_df, llm_model):
+def generate_recommendation(query, pois_df, llm_model, history):
     if pois_df.empty:
         return "Sorry, I cannot find any relevant places. Do you have other preferences in mind?", 0, 0
 
@@ -190,7 +192,7 @@ def generate_recommendation(query, pois_df, llm_model):
         f"{i + 1}. {row['text']}" for i, row in pois_df.iterrows()
     ])
 
-    prompt = PROMPT_GENERATE_RECOMMENDATION.format(query, pois_text)
+    prompt = PROMPT_GENERATE_RECOMMENDATION.format(query, pois_text, history)
     response, tokens_input, tokens_output = pass_llm(prompt=prompt, model=llm_model)
     return response, tokens_input, tokens_output
 
@@ -401,6 +403,7 @@ def _handle_poi_info(query, session, user_id, history, llm_model,
         history=history,
         pois=pois_text,
         query=query,
+        context="The user is located in the city center, Philadelphia, PA."
     )
 
     response, tokens_input, tokens_output = pass_llm(
@@ -450,7 +453,7 @@ def _handle_poi_refine(query, session, user_location, embeddings, df,
     )
 
     response, input_tokens, output_tokens = generate_recommendation(
-        query, retrieved_pois, llm_model=llm_model
+        query, retrieved_pois, llm_model=llm_model, history = session.get_history()
     )
     tokens_query_input += input_tokens
     tokens_query_output += output_tokens

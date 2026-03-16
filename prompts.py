@@ -128,6 +128,9 @@ PROMPT_GENERATE_RECOMMENDATION="""User query: "{}"
         Here are some relevant places:
         {}
 
+        Take into account the history how you phrase the response: 
+        {}
+
         Based on the query and the above options,
         recommend the most suitable place and summarize briefly in 20 words. 
         - Ask if you should navigate to that place but be concise.
@@ -138,6 +141,14 @@ PROMPT_GENERATE_RECOMMENDATION="""User query: "{}"
         - Try to be concise. 
         - Do not repeat the query.
         - Just summerize the place information with key details.
+
+        - Use e.g. phrases like:
+            - "I found ..."
+            - "You can find ..."
+            - "There is ..."
+            - "I suggest ..."
+            - "How about ..."
+            - "I recommend ..."
         """
 
 PROMPT_NLU="""
