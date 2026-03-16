@@ -18,7 +18,7 @@ Definitions:
 - confirm: user selects a place / wants to start navigation (e.g. "take me to the first one", "navigate there", "start navigation")
 - stop: user wants to end the conversation (e.g. "stop", "cancel", "nevermind end")
 - change_of_mind: user explicitly discards the previous target, and wants to start a new search.
-  (e.g. "forget that", "scratch that", "change of plans"
+  (e.g. "forget that", "scratch that", "change of plans", "want instead", "actually", "different place")
 
 Important:
 - You should distinguish very well between a change of mind and confirm. Because change of mind deletes the history poi.
@@ -130,8 +130,9 @@ PROMPT_GENERATE_RECOMMENDATION="""User query: "{}"
 
         Based on the query and the above options,
         recommend the most suitable place and summarize briefly in 20 words. 
-        - Ask if you should navigate to that place.
-        - Always ask to user for further input, if he wants to navigate there, or if he has other preferences/pois in mind if no poi is found.
+        - Ask if you should navigate to that place but be concise.
+        - Not much proactivity.
+        - Ask the user for further input, if he wants to navigate there, or if he has other preferences/pois in mind if no poi is found.
         if no poi could be found.
         - Try to sound humanlike.
         - Try to be concise. 
