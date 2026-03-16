@@ -36,7 +36,7 @@ embeddings, df= get_embeddings_and_df(path_dataset,
 class QueryRequest(BaseModel):
     query: str
     user_location: Optional[Tuple[float, float]] = Field(default=user_location)
-    llm_type: Optional[str] = "gpt-4o-mini"
+    llm_type: Optional[str] = None
     user_id: Optional[int] = 1
     
 class POIQueryRequest(BaseModel):
