@@ -141,6 +141,9 @@ PROMPT_GENERATE_RECOMMENDATION="""User query: "{}"
         - Try to be concise. 
         - Do not repeat the query.
         - Just summerize the place information with key details.
+        - Mention the poi in the response, from the list of options which fits most.
+        - Be carefull, that some pois might related to the request, not necessarily satisfy the users needs.
+        - Especially the name might be misleading.
 
         - Use e.g. phrases like:
             - "I found ..."
