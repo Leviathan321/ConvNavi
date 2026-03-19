@@ -1,12 +1,30 @@
+<h1 align="center">ConvNavi</h1>
+<h3 align="center">LLM-Based Place Search and POI Recommendation</h3>
 
-# ConvNavi: LLM-Based Place Search
+---
 
 ## Overview
 
-<p align="center"><img src="./figures/architecture.svg" alt="Architecture of ConvNavi" width="600"></p>
+<p align="center">
+  <img src="./figures/architecture.svg" alt="Architecture of ConvNavi" width="650">
+</p>
 
-Convnavi is a prototypical research implementation of a navigational/Point-of-Interest (POI) recommendation system. It receives as input textual requests regarding POIs and returns POIs from a database that should satisfy POI constraints/attributes provided in the input. The system is using internally an LLM to convert requests into a structured representation to retrieve a set of useful POIs from the database using Retrieval Augmented Generation (RAG). It returns afterwards to the user an LLM-based summerization of the found POIs and the found POIs.
+**ConvNavi** is a prototypical research implementation of a navigational Point-of-Interest (POI) recommendation system. The framework processes natural language queries describing user preferences and constraints, and returns relevant POIs from a structured database.
 
+Internally, ConvNavi leverages a Large Language Model (LLM) to transform unstructured user input into a structured representation. This representation is subsequently used within a Retrieval-Augmented Generation (RAG) pipeline to identify and retrieve candidate POIs.
+
+The system produces:
+- A set of POIs that satisfy the inferred constraints and attributes  
+- An LLM-generated summary describing and contextualizing the retrieved POIs  
+
+---
+
+## Key Characteristics
+
+- Natural language interface for POI search  
+- Structured query generation via LLMs  
+- Integration of Retrieval-Augmented Generation (RAG)  
+- Combined retrieval and summarization pipeline  
 ## Setup Instructions
 
 1. **Download the Yelp Dataset**  
