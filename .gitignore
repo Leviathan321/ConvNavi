@@ -1,5 +1,6 @@
 data/*
 .env
+key.json
 venv/
 # Ignore Python cache directories and files
 __pycache__/
