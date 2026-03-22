@@ -66,8 +66,8 @@ def query_handler(request: QueryRequest):
         # set the llm to be used for answering
         if request.llm_type is not None:
             os.environ['LLM_MODEL'] = request.llm_type
-            print("LLM model set: ", request.llm_type)
         llm_model = os.environ['LLM_MODEL']
+        print("LLM model set: ", llm_model)
         output = run_rag_navigation(
             query=request.query,
             user_location=user_location,
