@@ -49,7 +49,6 @@ def call_openai_gpt5_models(prompt,
     if model == "gpt-5-chat":
         response = client.chat.completions.create(
                 model=model,
-                temperature=temperature,
                 max_completion_tokens=max_completion_tokens,
                 messages=[
                     {"role": "system", "content": system_prompt},
@@ -59,7 +58,6 @@ def call_openai_gpt5_models(prompt,
     else:
         response = client.chat.completions.create(
             model=model,
-            temperature=temperature,
             reasoning_effort=reasoning_effort,
             max_completion_tokens=max_completion_tokens,
             messages=[
