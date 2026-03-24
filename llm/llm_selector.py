@@ -2,6 +2,8 @@ import subprocess
 from llm.call_deepseek import call_deepseek
 from llm.call_openai import call_openai, call_openai_gpt5_models
 from llm.call_ollama import call_ollama
+from llm.call_gemini import call_gemini
+from llm.call_anthropic import call_anthropic
 import os
 from dotenv import load_dotenv
 import traceback
@@ -28,10 +30,10 @@ def ensure_model(model_name):
     except subprocess.CalledProcessError as e:
         print(f"An error occurred: {e}")
         
-def pass_llm(prompt, 
+def pass_llm(prompt,
              model=os.getenv("LLM_MODEL"),
-             max_tokens=200, 
-             temperature=0, 
+             max_tokens=200,
+             temperature=0,
              system_prompt="You are an in car conversational assistant."):
     """
     Call the selected LLM backend with error handling that logs inputs
@@ -67,12 +69,30 @@ def pass_llm(prompt,
             )
         elif model in ("DeepSeek-V3-0324"):
             response, input_tokens, output_tokens = call_deepseek(
-                  prompt = prompt, 
-                  max_tokens=max_tokens, 
-                  temperature=temperature, 
-                  system_message=None, 
+                  prompt = prompt,
+                  max_tokens=max_tokens,
+                  temperature=temperature,
+                  system_message=None,
                   context=None,
-                  deployment_name=model)        
+                  deployment_name=model)
+        elif model in ("gemini-3-flash-preview", "gemini-3-pro-preview",
+                       "gemini-2.5-pro", "gemini-2.5-flash"):
+            response, input_tokens, output_tokens = call_gemini(
+                prompt=prompt,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                system_prompt=system_prompt,
+                model=model
+            )
+        elif model in ("claude-35-sonnet", "claude-37-sonnet",
+                       "claude-4-sonnet", "claude-3-haiku"):
+            response, input_tokens, output_tokens = call_anthropic(
+                prompt=prompt,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                system_prompt=system_prompt,
+                model=model
+            )
         else:
             raise ValueError("Model is not known.")
         
