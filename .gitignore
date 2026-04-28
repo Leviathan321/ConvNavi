@@ -9,3 +9,7 @@ __pycache__/
 *.pyo
 *.pyd
 key.json
+*.wav
+*.mp3
+out/
+test/out/

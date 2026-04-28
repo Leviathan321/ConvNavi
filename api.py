@@ -2,7 +2,7 @@ from enum import Enum
 import traceback
 from typing import Any, Dict, List, Optional, Tuple
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends
 from pydantic import BaseModel, Field
 import json
 from car.state import ENUM_MAP, CarState
@@ -11,6 +11,14 @@ from models import Session, SessionManager
 from utils.check import check_if_poi_exists
 from utils.format import sanitize_for_json
 import os
+import tempfile
+from openai import AzureOpenAI
+
+def parse_user_location(user_location: str = Form("39.955431,-75.154903")) -> Tuple[float, float]:
+    # Accept: "lat,lon" (recommended)
+    s = user_location.strip().strip("()[]")
+    lat, lon = [x.strip() for x in s.split(",")]
+    return float(lat), float(lon)
 
 load_dotenv()  # by default it looks for a .env in the working directory
 
@@ -58,6 +66,51 @@ class InitialCarStateRequest(BaseModel):
     user_id: Optional[int] = 1
     car_state: Dict[str, Dict[str, Any]]  # mirrors CarState.state
     
+def stt(audio_bytes: bytes, filename: str) -> str:
+    client = AzureOpenAI(
+        azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
+        api_key=os.environ["AZURE_OPENAI_API_KEY"],
+        api_version=os.environ.get("STT_MODEL_VERSION", "2025-03-01-preview")
+    )
+    with tempfile.NamedTemporaryFile(suffix=os.path.splitext(filename or "")[1] or ".wav") as tmp:
+        tmp.write(audio_bytes); tmp.flush()
+        print("STT MODEL:", os.environ["STT_MODEL"])
+        print("file for STT:", tmp.name)
+        with open(tmp.name, "rb") as f:
+            r = client.audio.transcriptions.create(model=os.environ["STT_MODEL"], 
+                                                   file=f)
+    return (getattr(r, "text", None) or str(r)).strip()
+
+@app.post("/query_audio")
+async def query_audio(
+    audio: UploadFile = File(...),
+    user_location: Tuple[float, float] = Depends(parse_user_location),
+    llm_type: Optional[str] = Form(None),
+    user_id: int = Form(1),
+):
+    b = await audio.read()
+    if not b:
+        raise HTTPException(400, "Empty audio")
+    
+    print("Received audio query from user_id:", user_id)
+    print(f"Audio filename: {audio.filename}, size: {len(b)} bytes, content type: {audio.content_type}")
+    
+    query = stt(b, audio.filename or "audio.wav")
+    if not query:
+        raise HTTPException(400, "STT failed")
+
+    if llm_type:
+        os.environ["LLM_MODEL"] = llm_type
+
+    return run_rag_navigation(
+        query=query,
+        user_location=user_location,  # <-- real Tuple[float,float] here
+        embeddings=embeddings,
+        df=df,
+        use_nlu=USE_NLU,
+        llm_model=os.environ.get("LLM_MODEL"),
+        user_id=user_id,
+    )  
 # Route
 @app.post("/query")
 def query_handler(request: QueryRequest):
