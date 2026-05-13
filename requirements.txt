@@ -10,3 +10,4 @@ uvicorn
 python-dotenv 
 ollama
 json_repair
+python-multipart
