@@ -19,6 +19,10 @@ import torch
 import traceback
 import ast
 
+from transformers.utils import logging
+
+logging.set_verbosity_error()
+
 from prompts import (
     PROMPT_CAR_RESPONSE,
     PROMPT_GENERATE_RECOMMENDATION,

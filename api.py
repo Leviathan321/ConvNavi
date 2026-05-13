@@ -96,6 +96,8 @@ async def query_audio(
     print(f"Audio filename: {audio.filename}, size: {len(b)} bytes, content type: {audio.content_type}")
     
     query = stt(b, audio.filename or "audio.wav")
+
+    print("STT output:", query)
     if not query:
         raise HTTPException(400, "STT failed")
 
