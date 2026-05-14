@@ -143,7 +143,8 @@ Hi, direct me to a fine Italian restaurant with more than 4 stars.
 - [x] POI Search
 - [x] Non POI Requests
 - [x] Car Functions
-- [x] Conversation up to X Turns (defined in .env)
+- [x] Multi-Turn Conversations
+- [x] Long-Term Memory
 - [ ] Support other backend/POI-data
 
 
