@@ -144,7 +144,8 @@ Hi, direct me to a fine Italian restaurant with more than 4 stars.
 - [x] Non POI Requests
 - [x] Car Functions
 - [x] Multi-Turn Conversations
-- [x] Long-Term Memory
+- [x] Long-Term Memory (POI)
+- [ ] Extend Memory for Personalization
 - [ ] Support other backend/POI-data
 
 
