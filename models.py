@@ -1,12 +1,54 @@
 from dataclasses import dataclass, field
 import json
-from typing import Dict, List
+from typing import Dict, List, Optional
 import os
 from dotenv import load_dotenv
+from pydantic import BaseModel
 
 from car.state import CarState
 
 load_dotenv()
+
+
+# ==================== CONTEXT MODELS ====================
+class POIPreferences(BaseModel):
+    """Default POI preferences for the user."""
+    category: Optional[str] = None
+    cuisine: Optional[str] = None
+    price_level: Optional[str] = None
+    radius_km: Optional[float] = None
+    open_now: Optional[bool] = None
+    rating: Optional[float] = None
+    parking: Optional[bool] = None
+    name: Optional[str] = None
+
+
+class PersonInfo(BaseModel):
+    """Personal information about the user."""
+    age: Optional[str] = None
+    name: Optional[str] = None
+    home: Optional[str] = None
+    nationality: Optional[str] = None
+
+
+class Preferences(BaseModel):
+    """User preferences for POI."""
+    poi: POIPreferences = POIPreferences()
+
+
+class Context(BaseModel):
+    """Complete user context for navigation."""
+    preferences: Preferences = Preferences()
+    location: Optional[str] = None
+    person: PersonInfo = PersonInfo()
+
+    def to_dict(self) -> dict:
+        """Convert context to dictionary."""
+        return self.model_dump(exclude_none=False)
+
+    def to_json(self) -> str:
+        """Convert context to JSON string."""
+        return self.model_dump_json()
 
 
 @dataclass
@@ -25,6 +67,9 @@ class Session(object):
 
     # NEW: persistent POI dialogue state
     poi_constraints: Dict = field(default_factory=dict)
+
+    # NEW: user context with preferences and person info
+    user_context: Context = field(default_factory=Context)
 
     def add_turn(self, turn: Turn):
         if len(self.turns) >= self.max_turns:

@@ -15,8 +15,8 @@ Decide the user's action. Return ONLY valid JSON:
 Definitions:
 - refine: user adds/changes filters for the current POI search (cuisine, price, rating, open now, distance, etc.)
 - info: user asks questions about previously recommended places (hours, address, why recommended, etc.)
-- confirm: user selects a place / wants to start navigation (e.g. "take me to the first one", "navigate there", "start navigation")
-- stop: user wants to end the conversation (e.g. "stop", "cancel", "nevermind end")
+- confirm: wants to start navigation (e.g. "take me to the first one", "navigate there", "start navigation"). If the request is unprecise it is not a confirmation. E.g. "Drive me to a bar."
+- stop: user wants to end the conversation (e.g. "stop", "cancel", "nevermind end"). A "Hello" or "Hi" is not a stop, but a greeting, so it should not be classified as stop.
 - change_of_mind: user explicitly discards the previous target, and wants to start a new search.
   (e.g. "forget that", "scratch that", "change of plans", "want instead", "actually", "different place")
 
@@ -123,6 +123,71 @@ PROMPT_PARSE_CONSTRAINTS = """
             Query: {}
             Response: 
         """
+
+PROMPT_CONSOLIDATE_NAV_UTTERANCE = """
+You are an assistant that rewrites a user navigation request into a short consolidated memory utterance.
+
+Task:
+- Remove filler words, politeness, and extra wording.
+- Keep only the essential information and constraints.
+- Preserve values such as cuisine, price, distance, rating, open now, parking, and place names.
+- Do not add new information.
+- Return a short phrase, ideally under 20 words.
+
+Examples:
+User: "I would like to eat some cheap Italian food nearby, please"
+Output: "cheap Italian food nearby"
+
+User: "Can you find me something open now with parking?"
+Output: "open now with parking"
+
+User: "I need a sushi place, not expensive"
+Output: "sushi, not expensive"
+
+User utterance: "{}"
+Output:
+"""
+
+PROMPT_FILL_MISSING_CONSTRAINTS = """
+You are an assistant that fills missing POI search constraints using navigation memory.
+You are task is to decide which constraint to fill and which not based on the user request.
+Some constraints might be missing because the dont fit to the user request. So they should remain missing.
+Understand whether the users does not wish the memory based constraints to be used or not.
+
+Conversation history:
+{history}
+
+Current user query:
+{query}
+
+Constraints extracted from the current query or conversation state:
+{constraints}
+
+Missing fields that may still need to be inferred:
+{missing_fields}
+
+Relevant navigation memories retrieved by embedding similarity:
+{memory}
+
+Rules:
+- Only fill a missing field when the query and retrieved memories clearly support the same navigation request.
+- Do not change any constraint that already has a non-null value.
+- Do not invent values that are not supported.
+- If the memory is not relevant, leave the field null.
+- Return ONLY valid JSON using the same schema as the constraints object.
+
+Return schema:
+{{
+    "category": string or null,
+    "cuisine": string or null,
+    "price_level": one of "$", "$$", "$$$", or null,
+    "radius_km": float or null,
+    "open_now": true/false/null,
+    "rating": float or null,
+    "parking": true/false/null,
+    "name": string or null
+}}
+"""
 
 PROMPT_GENERATE_RECOMMENDATION="""User query: "{}"
         Here are some relevant places:
@@ -276,6 +341,12 @@ Instructions:
 5. Do not modify `current_state`; only describe the changes.
 6. Try to include the history together with the query to understand the target.
 7. If the request is ambiguous, and history does not help, ask a clarification question instead of producing changes.
+8. You are able to understand also ambigous requests; and you can also can deduce from the conversation history relationships between turns (coreference resolution).
+
+Important:
+
+- Consider that ambient light level cannot be set to a state called on. It can only be set to a level.
+- Some lights can be only set to on or off, but not to a level.
 
 Examples:
 

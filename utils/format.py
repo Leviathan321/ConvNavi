@@ -1,9 +1,17 @@
 import math
 import json
 import re
+import numpy as np
 
 def sanitize_for_json(obj):
     """Recursively sanitize object to be JSON-compliant."""
+    # numpy scalar -> native
+    if isinstance(obj, np.generic):
+        try:
+            return obj.item()
+        except Exception:
+            return str(obj)
+
     if isinstance(obj, float):
         if math.isnan(obj) or math.isinf(obj):
             return None

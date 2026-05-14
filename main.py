@@ -10,10 +10,12 @@ from geopy.distance import geodesic
 from datetime import datetime
 import json
 import re
+import threading
+from pathlib import Path
 from car.state import ENUM_MAP, POSSIBLE_CAR_VALUES
 from llm.llm_selector import pass_llm, get_total_tokens, get_total_costs, get_query_costs
 import os
-from models import SessionManager, Turn
+from models import SessionManager, Turn, Context, POIPreferences
 from sentence_transformers import SentenceTransformer, util
 import torch
 import traceback
@@ -28,16 +30,31 @@ from prompts import (
     PROMPT_CAR_UPDATE,
     PROMPT_CLASSIFY_ACTION,
     PROMPT_POI_CONFIRM_SELECT,
+    PROMPT_FILL_MISSING_CONSTRAINTS,
+    PROMPT_CONSOLIDATE_NAV_UTTERANCE,
 )
 from utils.file import load_jsonl_to_df
-from utils.format import clean_json, extract_json, extract_json_list
+from utils.format import clean_json, extract_json, extract_json_list, sanitize_for_json
 
 load_dotenv()
 
 top_k = int(os.environ.get("TOP_K", 3))
+NAV_MEMORY_MAX_ENTRIES = int(os.environ.get("NAV_MEMORY_MAX_ENTRIES", 1000))
+NAV_MEMORY_TOP_K = int(os.environ.get("NAV_MEMORY_TOP_K", 5))
+USE_MEMORY = os.environ.get("USE_MEMORY", "true").strip().lower() not in ("0", "false", "no", "off")
+EMBEDDING_DEVICE = os.environ.get("EMBEDDING_DEVICE", "auto").strip().lower()
+if EMBEDDING_DEVICE == "auto":
+    EMBEDDING_DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+elif EMBEDDING_DEVICE == "cuda" and not torch.cuda.is_available():
+    print("[WARN] EMBEDDING_DEVICE=cuda requested but CUDA is unavailable. Falling back to cpu.")
+    EMBEDDING_DEVICE = "cpu"
+NAV_MEMORY_PATH = Path(__file__).resolve().parent / "data" / "navigation_memory.csv"
+NAV_MEMORY_EMBEDDINGS_PATH = Path(__file__).resolve().parent / "data" / "navigation_memory_embeddings.npy"
+NAV_MEMORY_FAISS_PATH = Path(__file__).resolve().parent / "data" / "navigation_memory.faiss"
+NAV_MEMORY_LOCK = threading.Lock()
 
 # Load embedding model once
-model = SentenceTransformer('all-MiniLM-L6-v2')
+model = SentenceTransformer('all-MiniLM-L6-v2', device=EMBEDDING_DEVICE)
 
 INTENT_NO_NLU = os.getenv("INTENT_NO_NLU", "poi").upper()
 
@@ -72,6 +89,269 @@ def preprocess_poi_json(row):
     return f"{row.get('name', '')}, a {categories} place rated {rating}/5 at {row.get('address', '')}. Price: {price_level if price_level else 'N/A'}."
 
 
+def _empty_memory_frame():
+    return pd.DataFrame(columns=["time", "conversation_id", "utterance"])
+
+
+def load_navigation_memory(memory_path: Path = NAV_MEMORY_PATH):
+    if not USE_MEMORY:
+        return _empty_memory_frame()
+
+    if not memory_path.exists():
+        return _empty_memory_frame()
+
+    try:
+        memory_df = pd.read_csv(memory_path)
+    except Exception:
+        return _empty_memory_frame()
+
+    if memory_df.empty:
+        return _empty_memory_frame()
+
+    for column in ["time", "conversation_id", "utterance"]:
+        if column not in memory_df.columns:
+            memory_df[column] = ""
+
+    return memory_df[["time", "conversation_id", "utterance"]].fillna("")
+
+
+def consolidate_navigation_utterance(utterance: str, llm_model: str = ""):
+    prompt = PROMPT_CONSOLIDATE_NAV_UTTERANCE.format(utterance)
+    response, _, _ = pass_llm(prompt=prompt, model=llm_model)
+    consolidated = response.strip().strip('"').strip("'")
+    if not consolidated:
+        return utterance.strip()
+    return consolidated
+
+
+def append_navigation_memory(utterance: str, conversation_id: str, llm_model: str = "", memory_path: Path = NAV_MEMORY_PATH):
+    if not USE_MEMORY:
+        return
+
+    # disable consolidation
+    # utterance = consolidate_navigation_utterance(utterance, llm_model=llm_model)
+    with NAV_MEMORY_LOCK:
+        memory_df = load_navigation_memory(memory_path)
+        embeddings = load_navigation_memory_embeddings(memory_df, memory_path)
+
+        new_row = pd.DataFrame([
+            {
+                "time": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+                "conversation_id": str(conversation_id),
+                "utterance": utterance,
+            }
+        ])
+
+        new_embedding = np.asarray(embed_texts([utterance]).cpu().numpy(), dtype=np.float32)
+
+        memory_df = pd.concat([memory_df, new_row], ignore_index=True)
+        embeddings = np.concatenate([embeddings, new_embedding], axis=0) if len(embeddings) else new_embedding
+
+        if len(memory_df) > NAV_MEMORY_MAX_ENTRIES:
+            memory_df = memory_df.iloc[-NAV_MEMORY_MAX_ENTRIES:].reset_index(drop=True)
+            embeddings = embeddings[-NAV_MEMORY_MAX_ENTRIES:]
+
+        normalized_embeddings = embeddings.astype(np.float32, copy=True)
+        if len(normalized_embeddings) > 0:
+            faiss.normalize_L2(normalized_embeddings)
+        index = faiss.IndexFlatIP(normalized_embeddings.shape[1])
+        index.add(normalized_embeddings)
+
+        memory_path.parent.mkdir(parents=True, exist_ok=True)
+        memory_df.to_csv(memory_path, index=False)
+        np.save(NAV_MEMORY_EMBEDDINGS_PATH, embeddings)
+        faiss.write_index(index, str(NAV_MEMORY_FAISS_PATH))
+
+
+def append_navigation_memory_async(utterance: str, conversation_id: str, llm_model: str = ""):
+    if not USE_MEMORY:
+        return
+
+    worker = threading.Thread(
+        target=append_navigation_memory,
+        kwargs={
+            "utterance": utterance,
+            "conversation_id": conversation_id,
+            "llm_model": llm_model,
+        },
+        daemon=True,
+    )
+    worker.start()
+
+
+def load_navigation_memory_embeddings(memory_df: pd.DataFrame, memory_path: Path = NAV_MEMORY_PATH):
+    if not USE_MEMORY:
+        return np.empty((0, model.get_sentence_embedding_dimension()), dtype=np.float32)
+
+    if memory_df.empty:
+        return np.empty((0, model.get_sentence_embedding_dimension()), dtype=np.float32)
+
+    if NAV_MEMORY_EMBEDDINGS_PATH.exists():
+        try:
+            embeddings = np.load(NAV_MEMORY_EMBEDDINGS_PATH)
+            if len(embeddings) == len(memory_df):
+                return embeddings
+        except Exception:
+            pass
+
+    embeddings = np.asarray(embed_texts(memory_df["utterance"].astype(str).tolist()).cpu().numpy(), dtype=np.float32)
+    memory_path.parent.mkdir(parents=True, exist_ok=True)
+    np.save(NAV_MEMORY_EMBEDDINGS_PATH, embeddings)
+    return embeddings
+
+
+def load_navigation_memory_index(memory_df: pd.DataFrame, memory_path: Path = NAV_MEMORY_PATH):
+    if not USE_MEMORY:
+        return None
+
+    if memory_df.empty:
+        return None
+
+    if NAV_MEMORY_FAISS_PATH.exists():
+        try:
+            index = faiss.read_index(str(NAV_MEMORY_FAISS_PATH))
+            if index.ntotal == len(memory_df):
+                return index
+        except Exception:
+            pass
+
+    embeddings = load_navigation_memory_embeddings(memory_df, memory_path).astype(np.float32, copy=True)
+    if len(embeddings) == 0:
+        return None
+
+    faiss.normalize_L2(embeddings)
+    index = faiss.IndexFlatIP(embeddings.shape[1])
+    index.add(embeddings)
+    memory_path.parent.mkdir(parents=True, exist_ok=True)
+    faiss.write_index(index, str(NAV_MEMORY_FAISS_PATH))
+    return index
+
+
+def retrieve_navigation_memory(query: str, constraints: Dict[str, Any], missing_fields: List[str] = None,
+                               top_k: int = NAV_MEMORY_TOP_K, memory_path: Path = NAV_MEMORY_PATH):
+    if not USE_MEMORY:
+        return []
+
+    memory_df = load_navigation_memory(memory_path)
+    if memory_df.empty:
+        return []
+
+    missing_fields = missing_fields or []
+    missing_fields_text = ", ".join(missing_fields) if missing_fields else "none"
+    search_text = (
+        f"query: {query}\n"
+        f"missing fields: {missing_fields_text}"
+    )
+    print("search_text:", search_text)
+    search_embedding = np.asarray(embed_texts([search_text]).cpu().numpy(), dtype=np.float32)
+    faiss.normalize_L2(search_embedding)
+
+    index = load_navigation_memory_index(memory_df, memory_path)
+    if index is None:
+        return []
+
+    top_n = min(top_k, len(memory_df))
+    if top_n <= 0:
+        return []
+
+    scores, top_indices = index.search(search_embedding, top_n)
+    retrieved = []
+    for score, idx in zip(scores[0].tolist(), top_indices[0].tolist()):
+        if idx < 0 or idx >= len(memory_df):
+            continue
+        row = memory_df.iloc[int(idx)]
+        retrieved.append({
+            # "conversation_id": row.get("conversation_id", ""),
+            # "time": row.get("time", ""),
+            "utterance": row.get("utterance", ""),
+            # "score": float(score),
+        })
+
+    return retrieved
+
+
+def fill_missing_constraints_with_memory(query: str, history: str, constraints: Dict[str, Any], context: Context, llm_model: str = ""):
+    canonical_fields = [
+        "category",
+        "cuisine",
+        "price_level",
+        "radius_km",
+        "open_now",
+        "rating",
+        "parking",
+        "name",
+    ]
+
+    constraint_snapshot = {field: constraints.get(field) if field in constraints else None for field in canonical_fields}
+
+    # missing if key is absent or present with None value
+    missing_fields = [field for field, value in constraint_snapshot.items() if value is None]
+    print("[DEBUG] Current constraints:", constraints)
+    print("[INFO] Missing constraint fields:", missing_fields)
+
+    if not missing_fields:
+        return constraints, 0, 0
+
+    # STEP 1: Try to fill from context preferences first
+    updated_constraints = dict(constraints)
+    remaining_missing_fields = []
+    
+    for field in missing_fields:
+        value_from_context = None
+        
+        # Check context.preferences.poi for all POI-related fields
+        if hasattr(context.preferences.poi, field):
+            context_value = getattr(context.preferences.poi, field)
+            if context_value is not None:
+                value_from_context = context_value
+        
+        if value_from_context is not None:
+            updated_constraints[field] = value_from_context
+            print(f"[DEBUG] Filled '{field}' from context: {value_from_context}")
+        else:
+            remaining_missing_fields.append(field)
+    
+    # STEP 2: Retrieve from memory for remaining missing fields
+    if not remaining_missing_fields and USE_MEMORY:
+        return updated_constraints, 0, 0
+
+    retrieved_memory = []
+    if USE_MEMORY:
+        retrieved_memory = retrieve_navigation_memory(query, constraint_snapshot, missing_fields=remaining_missing_fields)
+        if not retrieved_memory:
+            return updated_constraints, 0, 0
+
+    print("retrieved_memory:", retrieved_memory)
+
+    prompt = PROMPT_FILL_MISSING_CONSTRAINTS.format(
+        history=history,
+        query=query,
+        constraints=json.dumps(sanitize_for_json(constraint_snapshot), ensure_ascii=False, indent=2),
+        missing_fields=json.dumps(remaining_missing_fields, ensure_ascii=False, indent=2),
+        memory=json.dumps(sanitize_for_json(retrieved_memory), ensure_ascii=False, indent=2),
+    )
+    response, tokens_input, tokens_output = pass_llm(prompt=prompt, model=llm_model)
+    print("[DEBUG] LLM response for filling missing constraints:", response)
+    try:
+        parsed = extract_json(repair_json(response))
+    except Exception:
+        parsed = None
+    
+
+    if not isinstance(parsed, dict):
+        return updated_constraints, tokens_input, tokens_output
+
+    for key, value in parsed.items():
+        if value is None:
+            continue
+        # set if absent or currently None
+        if key not in updated_constraints or updated_constraints.get(key) is None:
+            updated_constraints[key] = value
+
+    print("[DEBUG] updated constraints after memory fill:", updated_constraints)
+    return updated_constraints, tokens_input, tokens_output
+
+
 def parse_query_to_constraints(query: str, history: str = "", llm_model: str = ""):
     prompt = PROMPT_PARSE_CONSTRAINTS.format(history, query)
     response, input_tokens, output_tokens = pass_llm(prompt, model=llm_model)
@@ -79,7 +359,7 @@ def parse_query_to_constraints(query: str, history: str = "", llm_model: str = "
     return response, input_tokens, output_tokens
 
 
-def classify_action(query, history, llm_model=""):
+def  classify_action(query, history, llm_model=""):
     """Single lightweight classifier to determine user action within POI flow."""
     prompt = PROMPT_CLASSIFY_ACTION.format(history=history, query=query)
     response, tokens_input, tokens_output = pass_llm(prompt, model=llm_model)
@@ -184,7 +464,7 @@ def retrieve_top_k_semantically(query, df_filtered, embeddings, k=top_k):
     return df_filtered.loc[top_indices]
 
 
-def generate_recommendation(query, pois_df, llm_model, history):
+def generate_recommendation(query, pois_df, llm_model, history, context: Context = None):
     if pois_df.empty:
         return "Sorry, I cannot find any relevant places. Do you have other preferences in mind?", 0, 0
 
@@ -192,7 +472,10 @@ def generate_recommendation(query, pois_df, llm_model, history):
         f"{i + 1}. {row['text']}" for i, row in pois_df.iterrows()
     ])
 
-    prompt = PROMPT_GENERATE_RECOMMENDATION.format(query, pois_text, history)
+    # Format context if provided
+    context_str = json.dumps(context.to_dict(), indent=2, ensure_ascii=False) if context else "{}"
+
+    prompt = PROMPT_GENERATE_RECOMMENDATION.format(query, pois_text, history, context_str)
     response, tokens_input, tokens_output = pass_llm(prompt=prompt, model=llm_model)
     return response, tokens_input, tokens_output
 
@@ -399,11 +682,14 @@ def _handle_poi_info(query, session, user_id, history, llm_model,
     else:
         pois_text = "No places have been suggested yet."
 
+    # Format context from Pydantic model
+    context_str = json.dumps(session.user_context.to_dict(), indent=2, ensure_ascii=False)
+
     prompt = PROMPT_POI_INFO.format(
         history=history,
         pois=pois_text,
         query=query,
-        context="The user is located in the city center, Philadelphia, PA."
+        context=context_str
     )
 
     response, tokens_input, tokens_output = pass_llm(
@@ -442,7 +728,24 @@ def _handle_poi_refine(query, session, user_location, embeddings, df,
     if meaningful_constraints:
         session.poi_constraints.update(meaningful_constraints)
 
+    session.poi_constraints, input_tokens, output_tokens = fill_missing_constraints_with_memory(
+        query=query,
+        history=history,
+        constraints=session.poi_constraints,
+        context=session.user_context,
+        llm_model=llm_model,
+    )
+    tokens_query_input += input_tokens
+    tokens_query_output += output_tokens
+
+    # Update context with filled constraints
+    for field in ["category", "cuisine", "price_level", "radius_km", "open_now", "rating", "parking", "name"]:
+        if field in session.poi_constraints and session.poi_constraints[field] is not None:
+            if hasattr(session.user_context.preferences.poi, field):
+                setattr(session.user_context.preferences.poi, field, session.poi_constraints[field])
+    
     print("[INFO] Accumulated POI constraints:", session.poi_constraints)
+    print("[DEBUG] Updated context preferences:", session.user_context.preferences.poi)
 
     df_filtered = apply_structured_filters(
         df, session.poi_constraints, user_location
@@ -452,8 +755,11 @@ def _handle_poi_refine(query, session, user_location, embeddings, df,
         query, df_filtered, embeddings=embeddings, k=top_k
     )
 
+    print("session.user_context:", session.user_context)
+
     response, input_tokens, output_tokens = generate_recommendation(
-        query, retrieved_pois, llm_model=llm_model, history = session.get_history()
+        query, retrieved_pois, llm_model=llm_model, history=session.get_history(), 
+        context=session.user_context
     )
     tokens_query_input += input_tokens
     tokens_query_output += output_tokens
@@ -480,6 +786,7 @@ def run_rag_navigation(
     use_nlu=True,
     llm_model=os.environ["LLM_MODEL"],
     user_id=1,
+    user_location_name: str = "Philadelphia, PA",
 ):
     print("[DEBUG] NLU active:", use_nlu)
 
@@ -489,8 +796,11 @@ def run_rag_navigation(
     if session is None or session.len() >= session.max_turns:
         print("[DEBUG] Creating new session...")
         session = session_manager.create_session(user_id)
+        # Initialize context with location name
+        session.user_context.location = user_location_name
 
     print("[DEBUG] User ID:", user_id, "Session ID:", session.id)
+    print("[DEBUG] User Location:", session.user_context.location)
 
     history = session.get_history()
 
@@ -530,6 +840,8 @@ def run_rag_navigation(
     # --------------------
     print("[DEBUG] Intent:", intent)
     if intent == "POI":
+        append_navigation_memory_async(query, conversation_id=session.id, llm_model=llm_model)
+
         action, tokens_input, tokens_output = classify_action(
             query, history, llm_model=llm_model
         )
@@ -624,7 +936,6 @@ def load_dataset(path_dataset, nrows, filter_city):
 
 
 def create_embeddings(df, do_save=True):
-    model = SentenceTransformer('all-MiniLM-L6-v2')
     embeddings = model.encode(df['text'].tolist(), show_progress_bar=True)
 
     faiss_index = faiss.IndexFlatL2(embeddings.shape[1])
@@ -683,6 +994,12 @@ if __name__ == "__main__":
                                                df_path,
                                                emb_path)
         print("\n--- RAG Recommendation System ---\n")
-        output = run_rag_navigation(query, user_location, embeddings, df=df)
+        output = run_rag_navigation(
+            query, 
+            user_location, 
+            embeddings, 
+            df=df,
+            user_location_name=f"{user_city}, PA"
+        )
         print(output["response"])
         print(json.dumps(output["retrieved_pois"], indent=2))
