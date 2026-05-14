@@ -28,10 +28,22 @@ embeddings, df= get_embeddings_and_df(path_dataset,
 
 if __name__ == "__main__":
     import sys
+    from models import SessionManager
+    from main import generate_episodic_summary, append_navigation_memory_episode_async, EPISODIC_MEMORY_BATCH_SIZE
+    
+    session_manager = SessionManager.get_instance()
+    
     while True:
         try:
             user_query = input("Enter query (or 'exit'): ").strip()
             if user_query.lower() == 'exit':
+                # Store episodic summary before exiting
+                session = session_manager.get_session("1")
+                if session and session.len() >= EPISODIC_MEMORY_BATCH_SIZE:
+                    history = session.get_history()
+                    episodic_summary = generate_episodic_summary(history, llm_model="gpt-4o-mini")
+                    if episodic_summary:
+                        append_navigation_memory_episode_async(episodic_summary, conversation_id=session.id, llm_model="gpt-4o-mini")
                 break
             output = run_rag_navigation(
                 query=user_query,

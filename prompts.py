@@ -90,6 +90,8 @@ PROMPT_PARSE_CONSTRAINTS = """
             
             History:  {}
 
+            Query: {}
+
             Return a JSON object with the following fields:
             - category: string or null (e.g., "Restaurants", "Mexican", "Italian", "Fast Food")
             - cuisine: string or null (e.g., "Mexican", "Burgers", "Thai")
@@ -100,6 +102,8 @@ PROMPT_PARSE_CONSTRAINTS = """
             - parking: true/false/null
             - name: string or null (specific name or partial name of the place). The name is a unique identifier. 
               While the category is a type of a venue.
+            - try to fill as many fields as possible, but only with information which is clearly supported by the query and the history.
+            - if the query is ambiguous, and there are multiple possible interpretations, try to include all
 
             Examples (where history is empty):
 
@@ -118,9 +122,7 @@ PROMPT_PARSE_CONSTRAINTS = """
             Query: "Is there a place named 'Burger Heaven' around?"
             Response: {{"category": null, "cuisine": null, "price_level": null, "radius_km": null, "open_now": null, "parking":null, "rating": null, "name": "Burger Heaven"}}    
 
-            Now it is your turn: 
-
-            Query: {}
+            Output now your response:
             Response: 
         """
 
@@ -175,6 +177,7 @@ Rules:
 - Do not invent values that are not supported.
 - If the memory is not relevant, leave the field null.
 - Return ONLY valid JSON using the same schema as the constraints object.
+- Not every field has be filled. Carefully check which fields make sense to be filled based on the query.
 
 Return schema:
 {{
@@ -194,6 +197,9 @@ PROMPT_GENERATE_RECOMMENDATION="""User query: "{}"
         {}
 
         Take into account the history how you phrase the response: 
+        {}
+
+        Consider the context also when answering:
         {}
 
         Based on the query and the above options,
@@ -439,3 +445,42 @@ PROMPT_CAR_RESPONSE = """Summarize which changes you have performed based on the
                          Request: {}
                          Changes: {}
                          """
+
+PROMPT_GENERATE_EPISODIC_SUMMARY = """
+You are an assistant that generates concise episodic memory summaries from navigation conversation turns.
+
+Task:
+- Summarize multiple conversation turns into a single coherent episodic memory entry.
+- Capture the user's overall navigation intent, constraints, and search behavior.
+- Preserve all meaningful constraints
+- Consolidate redundant or changing constraints into the final state.
+- Be concise: aim for 50-100 words maximum.
+- Do not include conversation mechanics (e.g., "user asked", "assistant replied").
+- Focus on any information which might be relevant regarding preferences and habits for the future.
+- Take care for subtile preferenes including "usually", "only", "mostly", "but not always", "sometimes", "I like X but not Y", "I want X but I dont care about Y", "I want X and Y", "I want X or Y", "I want X, Y, and Z", etc.
+
+Examples:
+
+Conversation turns:
+[
+  {{"question": "Show me restaurants", "answer": "Here are some options..."}},
+  {{"question": "I want something cheap", "answer": "Refined results..."}},
+  {{"question": "Is it open now? I want only propositions that are open.", "answer": "Yes, it's open"}}
+]
+Summary: "User searched for restaurants with budget preference, looking for options open immediately. Constraints: price level $. Prefrence to have only opened venues."
+
+Conversation turns:
+[
+  {{"question": "Find me Italian food", "answer": "Found 5 options..."}},
+  {{"question": "Within 5 km?", "answer": "Filtered to 3 options..."}},
+  {{"question": "Which has the highest rating?", "answer": "Here's the top-rated option..."}}
+]
+Summary: "User searched for Italian restaurants within 5 km radius, considering ratings. Found high-rated Italian dining options."
+
+Now summarize the following conversation turns:
+
+Conversation turns:
+{history}
+
+Summary:
+"""

@@ -32,6 +32,7 @@ from prompts import (
     PROMPT_POI_CONFIRM_SELECT,
     PROMPT_FILL_MISSING_CONSTRAINTS,
     PROMPT_CONSOLIDATE_NAV_UTTERANCE,
+    PROMPT_GENERATE_EPISODIC_SUMMARY,
 )
 from utils.file import load_jsonl_to_df
 from utils.format import clean_json, extract_json, extract_json_list, sanitize_for_json
@@ -40,8 +41,9 @@ load_dotenv()
 
 top_k = int(os.environ.get("TOP_K", 3))
 NAV_MEMORY_MAX_ENTRIES = int(os.environ.get("NAV_MEMORY_MAX_ENTRIES", 1000))
-NAV_MEMORY_TOP_K = int(os.environ.get("NAV_MEMORY_TOP_K", 5))
+NAV_MEMORY_TOP_K = int(os.environ.get("NAV_MEMORY_TOP_K", 7))
 USE_MEMORY = os.environ.get("USE_MEMORY", "true").strip().lower() not in ("0", "false", "no", "off")
+EPISODIC_MEMORY_BATCH_SIZE = int(os.environ.get("EPISODIC_MEMORY_BATCH_SIZE", int(os.environ.get("MAX_TURNS", 3))))
 EMBEDDING_DEVICE = os.environ.get("EMBEDDING_DEVICE", "auto").strip().lower()
 if EMBEDDING_DEVICE == "auto":
     EMBEDDING_DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -90,7 +92,7 @@ def preprocess_poi_json(row):
 
 
 def _empty_memory_frame():
-    return pd.DataFrame(columns=["time", "conversation_id", "utterance"])
+    return pd.DataFrame(columns=["time", "conversation_id", "summary"])
 
 
 def load_navigation_memory(memory_path: Path = NAV_MEMORY_PATH):
@@ -108,28 +110,31 @@ def load_navigation_memory(memory_path: Path = NAV_MEMORY_PATH):
     if memory_df.empty:
         return _empty_memory_frame()
 
-    for column in ["time", "conversation_id", "utterance"]:
+    for column in ["time", "conversation_id", "summary"]:
         if column not in memory_df.columns:
             memory_df[column] = ""
 
-    return memory_df[["time", "conversation_id", "utterance"]].fillna("")
+    return memory_df[["time", "conversation_id", "summary"]].fillna("")
 
 
-def consolidate_navigation_utterance(utterance: str, llm_model: str = ""):
-    prompt = PROMPT_CONSOLIDATE_NAV_UTTERANCE.format(utterance)
+def generate_episodic_summary(history: str, llm_model: str = "") -> str:
+    """Generate an episodic summary from multiple conversation turns."""
+    if not history or history == "[]":
+        return ""
+    
+    prompt = PROMPT_GENERATE_EPISODIC_SUMMARY.format(history=history)
     response, _, _ = pass_llm(prompt=prompt, model=llm_model)
-    consolidated = response.strip().strip('"').strip("'")
-    if not consolidated:
-        return utterance.strip()
-    return consolidated
+    summary = response.strip().strip('"').strip("'")
+    if not summary:
+        return ""
+    return summary
 
 
-def append_navigation_memory(utterance: str, conversation_id: str, llm_model: str = "", memory_path: Path = NAV_MEMORY_PATH):
-    if not USE_MEMORY:
+def append_navigation_memory_episode(summary: str, conversation_id: str, memory_path: Path = NAV_MEMORY_PATH):
+    """Store an episodic summary to navigation memory."""
+    if not USE_MEMORY or not summary:
         return
 
-    # disable consolidation
-    # utterance = consolidate_navigation_utterance(utterance, llm_model=llm_model)
     with NAV_MEMORY_LOCK:
         memory_df = load_navigation_memory(memory_path)
         embeddings = load_navigation_memory_embeddings(memory_df, memory_path)
@@ -138,11 +143,11 @@ def append_navigation_memory(utterance: str, conversation_id: str, llm_model: st
             {
                 "time": datetime.utcnow().isoformat(timespec="seconds") + "Z",
                 "conversation_id": str(conversation_id),
-                "utterance": utterance,
+                "summary": summary,
             }
         ])
 
-        new_embedding = np.asarray(embed_texts([utterance]).cpu().numpy(), dtype=np.float32)
+        new_embedding = np.asarray(embed_texts([summary]).cpu().numpy(), dtype=np.float32)
 
         memory_df = pd.concat([memory_df, new_row], ignore_index=True)
         embeddings = np.concatenate([embeddings, new_embedding], axis=0) if len(embeddings) else new_embedding
@@ -161,22 +166,33 @@ def append_navigation_memory(utterance: str, conversation_id: str, llm_model: st
         memory_df.to_csv(memory_path, index=False)
         np.save(NAV_MEMORY_EMBEDDINGS_PATH, embeddings)
         faiss.write_index(index, str(NAV_MEMORY_FAISS_PATH))
+        
+        # print(f"[INFO] Episodic memory stored for conversation {conversation_id}: {summary[:50]}...")
 
 
-def append_navigation_memory_async(utterance: str, conversation_id: str, llm_model: str = ""):
-    if not USE_MEMORY:
+def append_navigation_memory_episode_async(summary: str, conversation_id: str, llm_model: str = ""):
+    """Store an episodic summary asynchronously."""
+    if not USE_MEMORY or not summary:
         return
 
     worker = threading.Thread(
-        target=append_navigation_memory,
+        target=append_navigation_memory_episode,
         kwargs={
-            "utterance": utterance,
+            "summary": summary,
             "conversation_id": conversation_id,
-            "llm_model": llm_model,
         },
         daemon=True,
     )
     worker.start()
+
+
+def append_navigation_memory(utterance: str, conversation_id: str, llm_model: str = "", memory_path: Path = NAV_MEMORY_PATH):
+    """Deprecated: Use append_navigation_memory_episode instead. Kept for backward compatibility."""
+    if not USE_MEMORY:
+        return
+
+    # This function is kept for backward compatibility but does nothing now
+    # Episodic summaries are stored when conversation stops or max turns reached
 
 
 def load_navigation_memory_embeddings(memory_df: pd.DataFrame, memory_path: Path = NAV_MEMORY_PATH):
@@ -194,7 +210,7 @@ def load_navigation_memory_embeddings(memory_df: pd.DataFrame, memory_path: Path
         except Exception:
             pass
 
-    embeddings = np.asarray(embed_texts(memory_df["utterance"].astype(str).tolist()).cpu().numpy(), dtype=np.float32)
+    embeddings = np.asarray(embed_texts(memory_df["summary"].astype(str).tolist()).cpu().numpy(), dtype=np.float32)
     memory_path.parent.mkdir(parents=True, exist_ok=True)
     np.save(NAV_MEMORY_EMBEDDINGS_PATH, embeddings)
     return embeddings
@@ -263,14 +279,15 @@ def retrieve_navigation_memory(query: str, constraints: Dict[str, Any], missing_
         retrieved.append({
             # "conversation_id": row.get("conversation_id", ""),
             # "time": row.get("time", ""),
-            "utterance": row.get("utterance", ""),
+            "summary": row.get("summary", ""),
             # "score": float(score),
         })
 
     return retrieved
 
 
-def fill_missing_constraints_with_memory(query: str, history: str, constraints: Dict[str, Any], context: Context, llm_model: str = ""):
+def fill_missing_constraints_with_memory(query: str, history: str, constraints: Dict[str, Any], context: Context,
+                                        llm_model: str = "", skip_fields: List[str] = None):
     canonical_fields = [
         "category",
         "cuisine",
@@ -284,8 +301,13 @@ def fill_missing_constraints_with_memory(query: str, history: str, constraints: 
 
     constraint_snapshot = {field: constraints.get(field) if field in constraints else None for field in canonical_fields}
 
-    # missing if key is absent or present with None value
-    missing_fields = [field for field, value in constraint_snapshot.items() if value is None]
+    skip_fields = set(skip_fields or [])
+
+    # missing if key is absent or present with None value, excluding fields explicitly cleared this turn
+    missing_fields = [
+        field for field, value in constraint_snapshot.items()
+        if value is None and field not in skip_fields
+    ]
     print("[DEBUG] Current constraints:", constraints)
     print("[INFO] Missing constraint fields:", missing_fields)
 
@@ -342,6 +364,8 @@ def fill_missing_constraints_with_memory(query: str, history: str, constraints: 
         return updated_constraints, tokens_input, tokens_output
 
     for key, value in parsed.items():
+        if key in skip_fields:
+            continue
         if value is None:
             continue
         # set if absent or currently None
@@ -571,10 +595,17 @@ def _handle_car_intent(query, session, history, llm_model,
 
 
 def _handle_poi_stop(query, session, user_id,
-                     tokens_query_input, tokens_query_output):
+                     tokens_query_input, tokens_query_output,
+                     llm_model=""):
     """Handle the STOP action within POI flow."""
     response = "Okay, ending the conversation."
     pois_output = []
+
+    # Store episodic summary when conversation stops
+    history = session.get_history()
+    episodic_summary = generate_episodic_summary(history, llm_model=llm_model)
+    if episodic_summary:
+        append_navigation_memory_episode_async(episodic_summary, conversation_id=session.id, llm_model=llm_model)
 
     _finalize_turn(session, query, response, pois_output)
 
@@ -667,6 +698,12 @@ def _handle_poi_confirm(query, session, user_id,
 
     _finalize_turn(session, query, response, pois_output)
 
+    # Store episodic summary when user confirms (navigation starts)
+    history = session.get_history()
+    episodic_summary = generate_episodic_summary(history, llm_model=llm_model)
+    if episodic_summary:
+        append_navigation_memory_episode_async(episodic_summary, conversation_id=session.id, llm_model=llm_model)
+
     return _build_return_dict(
         response, pois_output, session, user_id,
         tokens_query_input, tokens_query_output,
@@ -717,16 +754,40 @@ def _handle_poi_refine(query, session, user_location, embeddings, df,
     new_constraints, input_tokens, output_tokens = parse_query_to_constraints(
         query, history=history, llm_model=llm_model
     )
+
+    print("[DEBUG] New constraints from query:", new_constraints)
     tokens_query_input += input_tokens
     tokens_query_output += output_tokens
 
-    meaningful_constraints = {k: v for k, v in new_constraints.items() if v is not None}
+    canonical_fields = [
+        "category",
+        "cuisine",
+        "price_level",
+        "radius_km",
+        "open_now",
+        "rating",
+        "parking",
+        "name",
+    ]
+
+    explicit_field_updates = {
+        k: new_constraints.get(k)
+        for k in canonical_fields
+        if k in new_constraints
+    }
+    explicit_null_fields = [k for k, v in explicit_field_updates.items() if v is None]
 
     if reset_constraints:
         session.poi_constraints = {}
 
-    if meaningful_constraints:
-        session.poi_constraints.update(meaningful_constraints)
+    if explicit_field_updates:
+        # Apply explicit updates, including None values to clear previous constraints.
+        session.poi_constraints.update(explicit_field_updates)
+
+    # Keep context aligned when a field is explicitly cleared to avoid auto-refilling from old context.
+    for field in explicit_null_fields:
+        if hasattr(session.user_context.preferences.poi, field):
+            setattr(session.user_context.preferences.poi, field, None)
 
     session.poi_constraints, input_tokens, output_tokens = fill_missing_constraints_with_memory(
         query=query,
@@ -794,6 +855,14 @@ def run_rag_navigation(
     session = session_manager.get_session(user_id)
 
     if session is None or session.len() >= session.max_turns:
+        # Store episodic summary if we're ending a session
+        if session is not None and session.len() >= session.max_turns:
+            history = session.get_history()
+            episodic_summary = generate_episodic_summary(history, llm_model=llm_model)
+            if episodic_summary:
+                append_navigation_memory_episode_async(episodic_summary, conversation_id=session.id, llm_model=llm_model)
+                print(f"[INFO] Max turns reached. Episodic memory stored for session {session.id}")
+    
         print("[DEBUG] Creating new session...")
         session = session_manager.create_session(user_id)
         # Initialize context with location name
@@ -840,7 +909,9 @@ def run_rag_navigation(
     # --------------------
     print("[DEBUG] Intent:", intent)
     if intent == "POI":
-        append_navigation_memory_async(query, conversation_id=session.id, llm_model=llm_model)
+        # Note: Individual turns are no longer stored. Episodic summaries are stored when:
+        # 1) User stops/exits conversation
+        # 2) Max turns are reached
 
         action, tokens_input, tokens_output = classify_action(
             query, history, llm_model=llm_model
@@ -853,7 +924,8 @@ def run_rag_navigation(
         if action == "stop":
             return _handle_poi_stop(
                 query, session, user_id,
-                tokens_query_input, tokens_query_output
+                tokens_query_input, tokens_query_output,
+                llm_model=llm_model
             )
 
         elif action == "confirm":
