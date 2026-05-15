@@ -22,7 +22,8 @@ Definitions:
 
 Important:
 - You should distinguish very well between a change of mind and confirm. Because change of mind deletes the history poi.
-  If you are not sure, select rather confirm. 
+- If you are not sure, select rather confirm. 
+- If someone asks for directions to a place, but the history is empty, than it cannot be confirm. It is rather a refine, because the user has not confirmed any of the recommended places, so it is more likely that he wants to start a new search with this new constraint.
 - If the user says "Start navigation." it it is always a confirm, even if it looks like a change of mind. Because the user wants to start navigation to the last recommended place.
 
 User: "I need to be cheap."

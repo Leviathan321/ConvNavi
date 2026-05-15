@@ -64,6 +64,8 @@ class Session(object):
     max_turns: int = int(os.getenv("MAX_TURNS"))
     tokens: dict = field(default_factory=dict)
     car_state: CarState = field(default_factory=CarState)
+    ended_by_user: bool = False
+    episodic_memory_stored: bool = False
 
     # NEW: persistent POI dialogue state
     poi_constraints: Dict = field(default_factory=dict)

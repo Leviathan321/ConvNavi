@@ -43,7 +43,7 @@ top_k = int(os.environ.get("TOP_K", 3))
 NAV_MEMORY_MAX_ENTRIES = int(os.environ.get("NAV_MEMORY_MAX_ENTRIES", 1000))
 NAV_MEMORY_TOP_K = int(os.environ.get("NAV_MEMORY_TOP_K", 7))
 USE_MEMORY = os.environ.get("USE_MEMORY", "true").strip().lower() not in ("0", "false", "no", "off")
-EPISODIC_MEMORY_BATCH_SIZE = int(os.environ.get("EPISODIC_MEMORY_BATCH_SIZE", int(os.environ.get("MAX_TURNS", 3))))
+EPISODIC_MEMORY_BATCH_SIZE = int(os.environ.get("EPISODIC_MEMORY_BATCH_SIZE", int(os.environ.get("MAX_TURNS", 10))))
 EMBEDDING_DEVICE = os.environ.get("EMBEDDING_DEVICE", "auto").strip().lower()
 if EMBEDDING_DEVICE == "auto":
     EMBEDDING_DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -54,6 +54,8 @@ NAV_MEMORY_PATH = Path(__file__).resolve().parent / "data" / "navigation_memory.
 NAV_MEMORY_EMBEDDINGS_PATH = Path(__file__).resolve().parent / "data" / "navigation_memory_embeddings.npy"
 NAV_MEMORY_FAISS_PATH = Path(__file__).resolve().parent / "data" / "navigation_memory.faiss"
 NAV_MEMORY_LOCK = threading.Lock()
+
+print(f"episodic memory config - USE_MEMORY: {USE_MEMORY}, BATCH_SIZE: {EPISODIC_MEMORY_BATCH_SIZE}, EMBEDDING_DEVICE: {EMBEDDING_DEVICE}")
 
 # Load embedding model once
 model = SentenceTransformer('all-MiniLM-L6-v2', device=EMBEDDING_DEVICE)
@@ -277,10 +279,10 @@ def retrieve_navigation_memory(query: str, constraints: Dict[str, Any], missing_
             continue
         row = memory_df.iloc[int(idx)]
         retrieved.append({
-            # "conversation_id": row.get("conversation_id", ""),
-            # "time": row.get("time", ""),
+            "conversation_id": row.get("conversation_id", ""),
+            "time": row.get("time", ""),
             "summary": row.get("summary", ""),
-            # "score": float(score),
+            "score": float(score),
         })
 
     return retrieved
@@ -435,6 +437,7 @@ def apply_structured_filters(df, intent, user_location,
         print(df_filtered.head())
 
     if len(df_filtered) > 0 and intent.get("radius_km") is not None:
+        print("user_location:", user_location)
         def within_radius(row):
             poi_loc = (row['latitude'], row['longitude'])
             return geodesic(user_location, poi_loc).km <= intent["radius_km"]
@@ -600,6 +603,8 @@ def _handle_poi_stop(query, session, user_id,
     """Handle the STOP action within POI flow."""
     response = "Okay, ending the conversation."
     pois_output = []
+
+    session.ended_by_user = True
 
     # Store episodic summary when conversation stops
     history = session.get_history()
@@ -854,7 +859,7 @@ def run_rag_navigation(
     session_manager = SessionManager.get_instance()
     session = session_manager.get_session(user_id)
 
-    if session is None or session.len() >= session.max_turns:
+    if session is None or session.ended_by_user or session.len() >= session.max_turns:
         # Store episodic summary if we're ending a session
         if session is not None and session.len() >= session.max_turns:
             history = session.get_history()
@@ -862,6 +867,8 @@ def run_rag_navigation(
             if episodic_summary:
                 append_navigation_memory_episode_async(episodic_summary, conversation_id=session.id, llm_model=llm_model)
                 print(f"[INFO] Max turns reached. Episodic memory stored for session {session.id}")
+        elif session is not None and session.ended_by_user:
+            print(f"[INFO] Session {session.id} ended by user. Creating a new session.")
     
         print("[DEBUG] Creating new session...")
         session = session_manager.create_session(user_id)
@@ -910,9 +917,6 @@ def run_rag_navigation(
     print("[DEBUG] Intent:", intent)
     if intent == "POI":
         # Note: Individual turns are no longer stored. Episodic summaries are stored when:
-        # 1) User stops/exits conversation
-        # 2) Max turns are reached
-
         action, tokens_input, tokens_output = classify_action(
             query, history, llm_model=llm_model
         )
