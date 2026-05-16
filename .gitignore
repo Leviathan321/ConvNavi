@@ -13,3 +13,4 @@ key.json
 *.mp3
 out/
 test/out/
+results/
