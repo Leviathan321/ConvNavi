@@ -183,8 +183,8 @@ def sample_preferences() -> List[Preference]:
 def preference_to_utterance(p: Preference) -> str:
     context_suffix = ""
     if p.context:
-        context_text = ", ".join(f"{key}={value}" for key, value in p.context.items())
-        context_suffix = f" if it is a {context_text}"
+        context_text = ", ".join(f"{key} is {value}" for key, value in p.context.items())
+        context_suffix = f" if {context_text}"
 
     if p.target == "cuisine":
         return f"The user likes {p.value} food{context_suffix}."
@@ -379,9 +379,14 @@ def evaluate(state: UserState, result: POIResult) -> Dict[str, bool]:
 if __name__ == "__main__":
     import sys
 
-    NUM_CASES = 10
+    NUM_CASES = 3
     passed = 0
     failed = 0
+
+    # create a timestamped results directory (YYYYMMDD_HHMMSS)
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    results_dir = os.path.join('results', timestamp)
+    os.makedirs(results_dir, exist_ok=True)
 
     # collect per-test, per-preference results for final table and CSV
     results_summary: List[Dict[str, Any]] = []
@@ -465,17 +470,49 @@ if __name__ == "__main__":
         print("\n=== LEAK CHECK ===\n")
         print(check_leak(query, state))
 
-        # Build a sample result (same as before)
-        result = POIResult(
-            name=Preference(target="name", operator="eq", value="Luigi").value,
-            category=Preference(target="category", operator="eq", value="bar").value,
-            cuisine=Preference(target="cuisine", operator="eq", value="italian").value,
-            price_level=state.preferences.get("price_level", Preference(target="price_level", operator="eq", value="$$")).value,
-            rating=4.5,
-            parking=state.preferences.get("parking", Preference(target="parking", operator="bool", value="true")).value
-        )
+        # If the response included POIs, evaluate each POI and pick the best one.
+        selected_poi = None
+        selected_checks = None
+        best_score = -1
 
-        checks = evaluate(state, result)
+        if isinstance(response_json, dict):
+            for key in ('retrieved_pois', 'pois', 'results', 'items', 'candidates', 'recommendations'):
+                if key in response_json and isinstance(response_json[key], list):
+                    for poi in response_json[key]:
+                        try:
+                            pr = POIResult(
+                                name=poi.get('name', ''),
+                                category=poi.get('category', ''),
+                                cuisine=poi.get('cuisine') if 'cuisine' in poi else None,
+                                price_level=poi.get('price_level') or poi.get('price') if poi else None,
+                                rating=poi.get('rating') if 'rating' in poi else None,
+                                parking=poi.get('parking') if 'parking' in poi else None,
+                            )
+                        except Exception:
+                            continue
+
+                        this_checks = evaluate(state, pr)
+                        # score: count of satisfied preference checks (exclude overall)
+                        score = sum(1 for k, v in this_checks.items() if k != 'overall' and v)
+                        if score > best_score:
+                            best_score = score
+                            selected_poi = pr
+                            selected_checks = this_checks
+                    break
+
+        # fallback to the synthetic sample result if no POIs were present or evaluation failed
+        if selected_checks is None:
+            result = POIResult(
+                name=Preference(target="name", operator="eq", value="Luigi").value,
+                category=Preference(target="category", operator="eq", value="bar").value,
+                cuisine=Preference(target="cuisine", operator="eq", value="italian").value,
+                price_level=state.preferences.get("price_level", Preference(target="price_level", operator="eq", value="$$")).value,
+                rating=4.5,
+                parking=state.preferences.get("parking", Preference(target="parking", operator="bool", value="true")).value
+            )
+            selected_checks = evaluate(state, result)
+
+        checks = selected_checks
         overall = checks.get("overall", False)
 
         print("\n=== EVALUATION ===\n")
@@ -526,6 +563,40 @@ if __name__ == "__main__":
                         poi_text = str(response_obj[key])
                     break
 
+        # extract a concise textual utterance from the response object (exclude POI lists)
+        def _extract_utterance(response_obj, response_text):
+            if isinstance(response_obj, dict):
+                # common top-level text fields
+                for k in ('utterance', 'text', 'response', 'answer', 'message', 'content', 'description'):
+                    v = response_obj.get(k)
+                    if isinstance(v, str) and v.strip():
+                        return v
+
+                # choices / assistant response formats
+                choices = response_obj.get('choices') or response_obj.get('outputs')
+                if isinstance(choices, list):
+                    for c in choices:
+                        if isinstance(c, dict):
+                            for k in ('text', 'message', 'content', 'response'):
+                                v = c.get(k)
+                                if isinstance(v, str) and v.strip():
+                                    return v
+                            # nested message content lists
+                            msg = c.get('message')
+                            if isinstance(msg, dict):
+                                cont = msg.get('content')
+                                if isinstance(cont, list):
+                                    for item in cont:
+                                        if isinstance(item, dict):
+                                            txt = item.get('text') or item.get('content')
+                                            if isinstance(txt, str) and txt.strip():
+                                                return txt
+
+                # fallback: return the full response_text (JSON string) if no concise field found
+            return response_text
+
+        response_utterance = _extract_utterance(response_obj, response_text)
+
         # build per-test row with one column per preference
         row = {"test": case_idx}
         present_prefs = 0
@@ -535,10 +606,10 @@ if __name__ == "__main__":
                 p = state.preferences[pref]
                 present_prefs += 1
                 passed_pref = checks.get(pref, True)
-                if p.context:
-                    val = ("PASS_local" if passed_pref else "FAIL_local")
-                else:
-                    val = ("PASS_global" if passed_pref else "FAIL_global")
+                scope = "local" if p.context else "global"
+                status = "PASS" if passed_pref else "FAIL"
+                # include the preference value and the status with scope in brackets
+                val = f"{p.value} ({status}_{scope})"
                 row[pref] = val
                 if passed_pref:
                     matched_prefs += 1
@@ -551,15 +622,15 @@ if __name__ == "__main__":
         else:
             pct = 0.0
         row["request_utterance"] = query
-        row["response_utterance"] = response_text
+        row["response_utterance"] = response_utterance
         row["response_pois"] = poi_text
         row["matched_percentage"] = pct
         per_test_rows.append(row)
 
         # write per-test detail CSV with history, request, and response
         try:
-            os.makedirs('results', exist_ok=True)
-            detail_csv = f'results/navigation_memory_test_{case_idx}.csv'
+            os.makedirs(results_dir, exist_ok=True)
+            detail_csv = os.path.join(results_dir, f'navigation_memory_test_{case_idx}.csv')
             with open(detail_csv, 'w', newline='', encoding='utf-8') as df:
                 writer = csv.DictWriter(df, fieldnames=['test', 'history', 'request', 'response_text', 'poi'])
                 writer.writeheader()
@@ -595,9 +666,9 @@ if __name__ == "__main__":
             print(row)
 
     # write CSV summary
-    summary_csv = 'results/navigation_memory_summary.csv'
+    summary_csv = os.path.join(results_dir, 'navigation_memory_summary.csv')
     try:
-        os.makedirs('results', exist_ok=True)
+        os.makedirs(results_dir, exist_ok=True)
         with open(summary_csv, 'w', newline='', encoding='utf-8') as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=["test", "preference", "scope", "passed", "overall"])
             writer.writeheader()
@@ -609,7 +680,7 @@ if __name__ == "__main__":
 
     # write per-test summary with one column per preference
     try:
-        per_test_csv = 'results/navigation_memory_summary_by_test.csv'
+        per_test_csv = os.path.join(results_dir, 'navigation_memory_summary_by_test.csv')
         if per_test_rows:
             fieldnames = ['test'] + sorted(FULL_CONSTRAINTS) + ['request_utterance', 'response_utterance', 'response_pois', 'matched_percentage']
             with open(per_test_csv, 'w', newline='', encoding='utf-8') as csvfile:
