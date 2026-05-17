@@ -14,7 +14,7 @@ Decide the user's action. Return ONLY valid JSON:
 
 Definitions:
 - refine: user adds/changes filters for the current POI search (cuisine, price, rating, open now, distance, etc.)
-- info: user asks questions about previously recommended places (hours, address, why recommended, etc.)
+- info: user asks questions about previously recommended places (hours, address, why recommended, etc.) or other information available in the memory or context.
 - confirm: wants to start navigation (e.g. "take me to the first one", "navigate there", "start navigation"). If the request is unprecise it is not a confirmation. E.g. "Drive me to a bar."
 - stop: user wants to end the conversation (e.g. "stop", "cancel", "nevermind end"). A "Hello" or "Hi" is not a stop, but a greeting, so it should not be classified as stop.
 - change_of_mind: user explicitly discards the previous target, and wants to start a new search.
@@ -155,10 +155,14 @@ Output:
 """
 
 PROMPT_FILL_MISSING_CONSTRAINTS = """
-You are an assistant that fills missing POI search constraints using navigation memory.
-You are task is to decide which constraint to fill and which not based on the user request.
-Some constraints might be missing because the dont fit to the user request. So they should remain missing.
-Understand whether the users does not wish the memory based constraints to be used or not.
+Fill missing navigation fields from memory.
+Return only JSON that follows the provided output format.
+
+Be carefull that not all fields have to be filled. Only fill the fields if there is a clear preference mentioned in the context or query.
+Also consider subtile preference saying "but not always", "sometimes", "I like X but not Y", "I want X but I dont care about Y", "I want X and Y", "I want X, Y, and Z", "usually", "mostly", etc.
+Consider preferences which define constraints.
+
+Important: If there is no value found, just use null, but do not make up values. Do not add any information which is not clearly supported by the query or the context.
 
 Conversation history:
 {history}
@@ -166,37 +170,14 @@ Conversation history:
 Current user query:
 {query}
 
-Constraints extracted from the current query or conversation state:
-{constraints}
-
 Missing fields that may still need to be inferred:
 {missing_fields}
 
 Relevant navigation memories retrieved by embedding similarity:
 {memory}
 
-Rules:
-- Only fill a missing field when the query and retrieved memories clearly support the same navigation request.
-- Do not change any constraint that already has a non-null value.
-- Do not invent values that are not supported.
-- If the memory is not relevant, leave the field null.
-- Return ONLY valid JSON using the same schema as the constraints object.
-- Not every field has be filled. Carefully check which fields make sense to be filled based on the query.
-
-Return schema:
-{{
-    "category": string or null,
-    "cuisine": string or null,
-    "price_level": one of "$", "$$", "$$$", or null,
-    "radius_km": float or null,
-    "open_now": true/false/null,
-    "rating": float or null,
-    "parking": true/false/null,
-    "has_outdoor_seating": true/false/null,
-    "noise_level": string or null,
-    "good_for_kids": true/false/null,
-    "name": string or null
-}}
+Output format (follow exactly):
+{output_format}
 """
 
 PROMPT_GENERATE_RECOMMENDATION="""User query: "{}"
