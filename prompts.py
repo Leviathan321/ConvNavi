@@ -99,16 +99,17 @@ PROMPT_PARSE_CONSTRAINTS = """
             - price_level: one of "$", "$$", "$$$", or null (based on 'RestaurantsPriceRange2' where 1="$", 2="$$", etc.)
             - radius_km: float (e.g., 5.0) or null
             - open_now: true/false/null
-            - rating: float between 1.0 and 5.0 or null
+            - rating: float between 3.5 and 5.0 or null
             - parking: true/false/null
-                        - has_outdoor_seating: true/false/null
-                        - noise_level: string or null (e.g., "quiet", "average", "loud")
-                        - good_for_kids: true/false/null
+            - has_outdoor_seating: true/false/null
+            - noise_level: string or null (e.g., "quiet", "average", "loud")
+            - good_for_kids: true/false/null
             - name: string or null (specific name or partial name of the place). The name is a unique identifier. 
               While the category is a type of a venue.
             - try to fill as many fields as possible, but only with information which is clearly supported by the query and the history.
             - if the query is ambiguous, and there are multiple possible interpretations, try to include all
-
+            - if there is no information for a field, set it to null, but do not make up values. Do not use true or false especially for parking, if there is no evidence/statement that supports that.
+            
             Examples (where history is empty):
 
             Query: "Show me Italian restaurants open now with price range two dollars and rating at least 4."
@@ -159,10 +160,15 @@ Fill missing navigation fields from memory.
 Return only JSON that follows the provided output format.
 
 Be carefull that not all fields have to be filled. Only fill the fields if there is a clear preference mentioned in the context or query.
-Also consider subtile preference saying "but not always", "sometimes", "I like X but not Y", "I want X but I dont care about Y", "I want X and Y", "I want X, Y, and Z", "usually", "mostly", etc.
+Also consider subtile preference saying "but not always", "sometimes", "usually", "mostly", etc.
 Consider preferences which define constraints.
 
-Important: If there is no value found, just use null, but do not make up values. Do not add any information which is not clearly supported by the query or the context.
+Important: 
+    - If there is no value found, just use null, but do not make up values. Do not use true or false especially for parking, if there is no evidence/statement that supports that.
+    - Do not add any information which is not clearly supported by the query or the context.
+    - Understand the query first. Try to understand the users needs and preferences from the query. 
+    - Information in the history or context might be unrelated to the query then this information cannot be provided.
+    - If there is a conflict between two statements consider the most recent as valid.
 
 Conversation history:
 {history}

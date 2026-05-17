@@ -358,7 +358,8 @@ def load_navigation_memory_index(memory_df: pd.DataFrame, memory_path: Path = NA
 
 
 def retrieve_navigation_memory(query: str, context_snapshot: Dict[str, Any],
-                               top_k: int = NAV_MEMORY_TOP_K, memory_path: Path = NAV_MEMORY_PATH):
+                               top_k: int = NAV_MEMORY_TOP_K, memory_path: Path = NAV_MEMORY_PATH,
+                               navigation_only: bool = False):
     if not USE_MEMORY:
         return []
 
@@ -366,12 +367,21 @@ def retrieve_navigation_memory(query: str, context_snapshot: Dict[str, Any],
     if memory_df.empty:
         return []
 
-    context_json = json.dumps(sanitize_for_json(context_snapshot or {}), ensure_ascii=False, indent=2)
+    # Optionally restrict the context passed to memory retrieval to navigation-related fields
+    if navigation_only and context_snapshot:
+        reduced = {}
+        for k in ("preferences", "location"):
+            if k in context_snapshot:
+                reduced[k] = context_snapshot[k]
+        context_json = json.dumps(sanitize_for_json(reduced or {}), ensure_ascii=False, indent=2)
+        print("[INFO] Using navigation-only memory retrieval. Context snapshot reduced to:\n" + context_json)
+    else:
+        context_json = json.dumps(sanitize_for_json(context_snapshot or {}), ensure_ascii=False, indent=2)
     search_text = (
         f"query: {query}\n"
         f"context: {context_json}"
     )
-    print("search_text:", search_text)
+    print("[DEBUG] Memory search text:\n" + search_text)
     search_embedding = np.asarray(embed_texts([search_text]).cpu().numpy(), dtype=np.float32)
     faiss.normalize_L2(search_embedding)
 
@@ -391,10 +401,15 @@ def retrieve_navigation_memory(query: str, context_snapshot: Dict[str, Any],
         row = memory_df.iloc[int(idx)]
         retrieved.append({
             #"conversation_id": row.get("conversation_id", ""),
-            "time": row.get("time", ""),
+            # "time": row.get("time", ""),
             "summary": row.get("summary", ""),
-            "score": float(score),
+            # "score": float(score),
         })
+
+    try:
+        print("[INFO] Retrieved memory (formatted):\n" + json.dumps(retrieved, ensure_ascii=False, indent=2))
+    except Exception:
+        print("[INFO] Retrieved memory:", retrieved)
 
     return retrieved
 
@@ -447,9 +462,9 @@ def _normalize_parsed_values(obj: Any) -> Any:
     """
     if isinstance(obj, dict):
         return {k: _normalize_parsed_values(v) for k, v in obj.items()}
-    if isinstance(obj, list):
+    elif isinstance(obj, list):
         return [_normalize_parsed_values(x) for x in obj]
-    if isinstance(obj, str):
+    elif isinstance(obj, str):
         s = obj.strip()
         if not s:
             return None
@@ -469,7 +484,8 @@ def _normalize_parsed_values(obj: Any) -> Any:
         except Exception:
             pass
         return obj
-    return obj
+    else:
+        return obj
 
 
 def fill_missing_constraints_with_memory(query: str, history: str, constraints: Dict[str, Any], context: Context,
@@ -488,7 +504,7 @@ def fill_missing_constraints_with_memory(query: str, history: str, constraints: 
     print("[INFO] Missing constraint fields:", missing_fields)
 
     if not missing_fields:
-        return constraints, 0, 0
+        return constraints, 0, 0, None
 
     # STEP 1: Try to fill from context preferences first
     updated_constraints = dict(constraints)
@@ -515,67 +531,110 @@ def fill_missing_constraints_with_memory(query: str, history: str, constraints: 
 
     # STEP 2: Retrieve from memory for remaining missing fields in full context
     if not all_missing_fields:
-        return updated_constraints, 0, 0
+        return updated_constraints, 0, 0, None
 
     retrieved_memory = []
+    # allow switching between navigation-only retrieval and full-context retrieval
+    navigation_only_flag = True
     if USE_MEMORY:
         retrieved_memory = retrieve_navigation_memory(
             query,
             context_snapshot=context_snapshot,
+            navigation_only=navigation_only_flag,
         )
         if not retrieved_memory:
-            return updated_constraints, 0, 0
+            return updated_constraints, 0, 0, None
 
-    print("retrieved_memory:", retrieved_memory)
+    try:
+        print("[INFO] Retrieved memory:\n" + json.dumps(retrieved_memory, ensure_ascii=False, indent=2))
+    except Exception:
+        print("[INFO] Retrieved memory:", retrieved_memory)
 
     missing_fields_payload = all_missing_fields
-    output_format_payload = {
-        "constraints": {
-            "category": "string|null",
-            "cuisine": "string|null",
-            "price_level": "$|$$|$$$|null",
-            "radius_km": "float|null",
-            "open_now": "bool|null",
-            "rating": "float|null",
-            "parking": "bool|null",
-            "has_outdoor_seating": "bool|null",
-            "noise_level": "string|null",
-            "good_for_kids": "bool|null",
-            "name": "string|null",
-        },
-        "context_updates": {
-            "preferences": {
-                "poi": {
-                    "category": "string|null",
-                    "cuisine": "string|null",
-                    "price_level": "string|null",
-                    "radius_km": "float|null",
-                    "open_now": "bool|null",
-                    "rating": "float|null",
-                    "parking": "bool|null",
-                    "has_outdoor_seating": "bool|null",
-                    "noise_level": "string|null",
-                    "good_for_kids": "bool|null",
-                    "name": "string|null",
+    if navigation_only_flag:
+        # When navigation-only retrieval is requested, restrict the missing-fields
+        # payload to only POI-related preference paths (e.g. "preferences.poi.category").
+        poi_prefix = "preferences.poi."
+        poi_missing = [p for p in all_missing_fields if p.startswith(poi_prefix)]
+        if not poi_missing:
+            return updated_constraints, 0, 0, None
+        missing_fields_payload = poi_missing
+        print("[INFO] Using navigation-only memory retrieval. Context snapshot is reduced to navigation-related fields.")
+        # When retrieving navigation-only memory we only need POI preference updates
+        output_format_payload = {
+            "context_updates": {
+                "preferences": {
+                    "poi": {
+                        "category": "<string|null>",
+                        "cuisine": "<string|null>",
+                        "price_level": "<string|null>",
+                        "radius_km": "<float|null>",
+                        "open_now": "<bool|null>",
+                        "rating": "<float|null>",
+                        "parking": "<bool|null>",
+                        "has_outdoor_seating": "<bool|null>",
+                        "noise_level": "<string|null>",
+                        "good_for_kids": "<bool|null>",
+                        "name": "<string|null>",
+                    }
                 }
+            }
+        }
+    else:
+        output_format_payload = {
+            "constraints": {
+                "category": "<string|null>",
+                "cuisine": "<string|null>",
+                "price_level": "<string|null>",
+                "radius_km": "<float|null>",
+                "open_now": "<bool|null>",
+                "rating": "<float|null>",
+                "parking": "<bool|null>",
+                "has_outdoor_seating": "<bool|null>",
+                "noise_level": "<string|null>",
+                "good_for_kids": "<bool|null>",
+                "name": "<string|null>",
             },
-            "location": "string|null",
-            "person": {
-                "age": "string|null",
-                "name": "string|null",
-                "home": "string|null",
-                "nationality": "string|null",
+            "context_updates": {
+                "preferences": {
+                    "poi": {
+                        "category": "<string|null>",
+                        "cuisine": "<string|null>",
+                        "price_level": "<string|null>",
+                        "radius_km": "<float|null>",
+                        "open_now": "<bool|null>",
+                        "rating": "<float|null>",
+                        "parking": "<bool|null>",
+                        "has_outdoor_seating": "<bool|null>",
+                        "noise_level": "<string|null>",
+                        "good_for_kids": "<bool|null>",
+                        "name": "<string|null>",
+                    }
+                },
+                "location": "<string|null>",
+                "person": {
+                    "age": "<string|null>",
+                    "name": "<string|null>",
+                    "home": "<string|null>",
+                    "nationality": "<string|null>",
+                },
             },
-        },
-    }
+        }
+    
+    # Simplify missing-fields: only send attribute names (e.g. "cuisine", "radius_km")
+    missing_fields_attrs = [p.split('.')[-1] for p in missing_fields_payload]
+    print("missing fields payload:", json.dumps(sanitize_for_json(missing_fields_attrs), ensure_ascii=False, indent=2))
 
     prompt = PROMPT_FILL_MISSING_CONSTRAINTS.format(
         history=history,
         query=query,
-        missing_fields=json.dumps(sanitize_for_json(missing_fields_payload), ensure_ascii=False, indent=2),
+        missing_fields=json.dumps(sanitize_for_json(missing_fields_attrs), ensure_ascii=False, indent=2),
         memory=json.dumps(sanitize_for_json(retrieved_memory), ensure_ascii=False, indent=2),
         output_format=json.dumps(output_format_payload, ensure_ascii=False, indent=2),
     )
+    # print("[DEBUG] Prompt for filling missing constraints:\n" + prompt)
+    # input()
+
     response, tokens_input, tokens_output = pass_llm(prompt=prompt, model=llm_model, max_tokens=1000)
     print("[DEBUG] LLM response for filling missing constraints:", response)
     try:
@@ -594,7 +653,8 @@ def fill_missing_constraints_with_memory(query: str, history: str, constraints: 
         context_updates = _normalize_parsed_values(context_updates)
         _apply_context_updates(context, context_updates)
 
-    parsed_constraints = parsed.get("constraints") if isinstance(parsed.get("constraints"), dict) else parsed
+    # Constraints field is optional; use empty dict when absent
+    parsed_constraints = parsed.get("constraints") if isinstance(parsed.get("constraints"), dict) else {}
 
     for key, value in parsed_constraints.items():
         if key in skip_fields:
@@ -636,8 +696,7 @@ def  classify_action(query, history, llm_model=""):
 def apply_structured_filters(df, intent, user_location,
                              use_embeddings_category=False,
                              similarity_threshold_category=0.8):
-    print("**** apply structured filters ****")
-    print("intent: ", intent)
+    print(json.dumps({"apply_structured_filters": intent}, indent=2))
     df_filtered = df.copy()
 
     def filter_contains_in_fields(df_filtered, key_word, field_names):
@@ -1026,7 +1085,10 @@ def _handle_poi_refine(query, session, user_location, embeddings, df,
         query, history=history, llm_model=llm_model
     )
 
-    print("[DEBUG] New constraints from query:", new_constraints)
+    try:
+        print("[DEBUG] New constraints from query:\n" + json.dumps(sanitize_for_json(new_constraints or {}), ensure_ascii=False, indent=2))
+    except Exception:
+        print("[DEBUG] New constraints from query:", new_constraints)
     tokens_query_input += input_tokens
     tokens_query_output += output_tokens
 
@@ -1035,21 +1097,17 @@ def _handle_poi_refine(query, session, user_location, embeddings, df,
     explicit_field_updates = {
         k: new_constraints.get(k)
         for k in canonical_fields
-        if k in new_constraints
+        if k in new_constraints and new_constraints.get(k) is not None
     }
-    explicit_null_fields = [k for k, v in explicit_field_updates.items() if v is None]
 
     if reset_constraints:
         session.poi_constraints = {}
 
     if explicit_field_updates:
-        # Apply explicit updates, including None values to clear previous constraints.
+        # Apply only non-null updates; null values mean "keep the previous constraint".
         session.poi_constraints.update(explicit_field_updates)
 
-    # Keep context aligned when a field is explicitly cleared to avoid auto-refilling from old context.
-    for field in explicit_null_fields:
-        if hasattr(session.user_context.preferences.poi, field):
-            setattr(session.user_context.preferences.poi, field, None)
+    print("[DEBUG] Constraints after applying explicit updates from query:", session.poi_constraints)
 
     session.poi_constraints, input_tokens, output_tokens, context_updates = fill_missing_constraints_with_memory(
         query=query,
@@ -1074,8 +1132,37 @@ def _handle_poi_refine(query, session, user_location, embeddings, df,
             if hasattr(session.user_context.preferences.poi, field):
                 setattr(session.user_context.preferences.poi, field, session.poi_constraints[field])
     
-    print("[INFO] Accumulated POI constraints:", session.poi_constraints)
-    print("[DEBUG] Updated context preferences:", session.user_context.preferences.poi)
+    try:
+        print("[INFO] Accumulated POI constraints:\n" + json.dumps(sanitize_for_json(session.poi_constraints), ensure_ascii=False, indent=2))
+    except Exception:
+        print("[INFO] Accumulated POI constraints:", session.poi_constraints)
+
+    def _dump_model(obj):
+        if hasattr(obj, "model_dump"):
+            try:
+                return obj.model_dump()
+            except Exception:
+                pass
+        if hasattr(obj, "dict"):
+            try:
+                return obj.dict()
+            except Exception:
+                pass
+        if hasattr(obj, "to_dict"):
+            try:
+                return obj.to_dict()
+            except Exception:
+                pass
+        try:
+            return obj.__dict__
+        except Exception:
+            return str(obj)
+
+    try:
+        prefs_map = _dump_model(session.user_context.preferences.poi)
+        print("[DEBUG] Updated context preferences:\n" + json.dumps(sanitize_for_json(prefs_map), ensure_ascii=False, indent=2))
+    except Exception:
+        print("[DEBUG] Updated context preferences:", session.user_context.preferences.poi)
 
     df_filtered = apply_structured_filters(
         df, session.poi_constraints, user_location
