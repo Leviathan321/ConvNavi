@@ -20,6 +20,9 @@ class POIPreferences(BaseModel):
     open_now: Optional[bool] = None
     rating: Optional[float] = None
     parking: Optional[bool] = None
+    has_outdoor_seating: Optional[bool] = None
+    noise_level: Optional[str] = None
+    good_for_kids: Optional[bool] = None
     name: Optional[str] = None
 
 

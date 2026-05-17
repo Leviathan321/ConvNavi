@@ -57,6 +57,9 @@ class POIQueryRequest(BaseModel):
     name: Optional[str] = None
     user_location: Optional[Tuple[float, float]] = Field(default=user_location)
     parking: Optional[str] = None
+    has_outdoor_seating: Optional[bool] = None
+    noise_level: Optional[str] = None
+    good_for_kids: Optional[bool] = None
     
 class POIExistsResponse(BaseModel):
     exists: bool

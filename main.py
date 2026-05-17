@@ -61,6 +61,30 @@ print(f"episodic memory config - USE_MEMORY: {USE_MEMORY}, BATCH_SIZE: {EPISODIC
 model = SentenceTransformer('all-MiniLM-L6-v2', device=EMBEDDING_DEVICE)
 
 INTENT_NO_NLU = os.getenv("INTENT_NO_NLU", "poi").upper()
+POI_CONSTRAINT_FIELDS = [
+    "category",
+    "cuisine",
+    "price_level",
+    "radius_km",
+    "open_now",
+    "rating",
+    "parking",
+    "has_outdoor_seating",
+    "noise_level",
+    "good_for_kids",
+    "name",
+]
+POI_OUTPUT_COLUMNS = [
+    "name",
+    "category",
+    "rating",
+    "price_level",
+    "address",
+    "has_outdoor_seating",
+    "noise_level",
+    "good_for_kids",
+    "parking",
+]
 
 PROMPT_POI_INFO = """You are a helpful car navigation assistant. The user is asking a question about a place.
 
@@ -91,6 +115,97 @@ def preprocess_poi_json(row):
     rating = row.get('rating', None)
     price_level = row.get('price_level', None)
     return f"{row.get('name', '')}, a {categories} place rated {rating}/5 at {row.get('address', '')}. Price: {price_level if price_level else 'N/A'}."
+
+
+def _parse_attributes(attributes):
+    if isinstance(attributes, dict):
+        return attributes
+    if isinstance(attributes, str) and attributes.strip():
+        try:
+            parsed = ast.literal_eval(attributes)
+            if isinstance(parsed, dict):
+                return parsed
+        except Exception:
+            return {}
+    return {}
+
+
+def _normalize_bool_like(value):
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, np.integer)) and value in (0, 1):
+        return bool(value)
+    if isinstance(value, str):
+        normalized = value.strip().strip('"').strip("'").lower()
+        if normalized in ("true", "t", "1", "yes"):
+            return True
+        if normalized in ("false", "f", "0", "no"):
+            return False
+    return None
+
+
+def _normalize_text_like(value):
+    if value is None:
+        return None
+    if isinstance(value, float) and pd.isna(value):
+        return None
+    if isinstance(value, str):
+        normalized = value.strip()
+        normalized = re.sub(r"^u(['\"])(.*)\1$", r"\2", normalized)
+        normalized = normalized.strip("'\"").strip()
+        return normalized.lower() if normalized else None
+    normalized = str(value).strip()
+    return normalized.lower() if normalized else None
+
+
+def _extract_attribute(attributes, attribute_name, value_type):
+    attribute_map = _parse_attributes(attributes)
+    raw_value = attribute_map.get(attribute_name)
+    if value_type == "bool":
+        return _normalize_bool_like(raw_value)
+    if value_type == "text":
+        return _normalize_text_like(raw_value)
+    return raw_value
+
+
+def _with_derived_poi_columns(df):
+    if df is None or df.empty or "attributes" not in df.columns:
+        return df
+
+    df = df.copy()
+
+    if "has_outdoor_seating" not in df.columns:
+        df["has_outdoor_seating"] = df["attributes"].apply(
+            lambda attributes: _extract_attribute(attributes, "OutdoorSeating", "bool")
+        )
+
+    if "noise_level" not in df.columns:
+        df["noise_level"] = df["attributes"].apply(
+            lambda attributes: _extract_attribute(attributes, "NoiseLevel", "text")
+        )
+
+    if "good_for_kids" not in df.columns:
+        df["good_for_kids"] = df["attributes"].apply(
+            lambda attributes: _extract_attribute(attributes, "GoodForKids", "bool")
+        )
+
+    if "parking" not in df.columns:
+        def _has_parking(attributes):
+            try:
+                parking_value = _parse_attributes(attributes).get("BusinessParking")
+                if parking_value:
+                    parking_dict = ast.literal_eval(parking_value)
+                    if isinstance(parking_dict, dict):
+                        return any(bool(value) for value in parking_dict.values())
+            except Exception:
+                pass
+            return False
+
+        df["parking"] = df["attributes"].apply(_has_parking)
+
+    return df
 
 
 def _empty_memory_frame():
@@ -290,16 +405,7 @@ def retrieve_navigation_memory(query: str, constraints: Dict[str, Any], missing_
 
 def fill_missing_constraints_with_memory(query: str, history: str, constraints: Dict[str, Any], context: Context,
                                         llm_model: str = "", skip_fields: List[str] = None):
-    canonical_fields = [
-        "category",
-        "cuisine",
-        "price_level",
-        "radius_km",
-        "open_now",
-        "rating",
-        "parking",
-        "name",
-    ]
+    canonical_fields = POI_CONSTRAINT_FIELDS
 
     constraint_snapshot = {field: constraints.get(field) if field in constraints else None for field in canonical_fields}
 
@@ -436,6 +542,30 @@ def apply_structured_filters(df, intent, user_location,
             df_filtered = df_filtered[df_filtered['price_level'] == intent["price_level"]]
         print(df_filtered.head())
 
+    if len(df_filtered) > 0 and intent.get("has_outdoor_seating") is not None:
+        expected_value = _normalize_bool_like(intent["has_outdoor_seating"])
+        if expected_value is not None and 'has_outdoor_seating' in df_filtered.columns:
+            df_filtered = df_filtered[
+                df_filtered['has_outdoor_seating'].apply(_normalize_bool_like) == expected_value
+            ]
+        print(df_filtered.head())
+
+    if len(df_filtered) > 0 and intent.get("noise_level"):
+        expected_value = _normalize_text_like(intent["noise_level"])
+        if expected_value and 'noise_level' in df_filtered.columns:
+            df_filtered = df_filtered[
+                df_filtered['noise_level'].fillna("").astype(str).str.lower().str.strip() == expected_value
+            ]
+        print(df_filtered.head())
+
+    if len(df_filtered) > 0 and intent.get("good_for_kids") is not None:
+        expected_value = _normalize_bool_like(intent["good_for_kids"])
+        if expected_value is not None and 'good_for_kids' in df_filtered.columns:
+            df_filtered = df_filtered[
+                df_filtered['good_for_kids'].apply(_normalize_bool_like) == expected_value
+            ]
+        print(df_filtered.head())
+
     if len(df_filtered) > 0 and intent.get("radius_km") is not None:
         print("user_location:", user_location)
         def within_radius(row):
@@ -468,7 +598,9 @@ def apply_structured_filters(df, intent, user_location,
         df_filtered = df_filtered[df_filtered['rating'] >= intent["rating"]]
 
     if len(df_filtered) > 0 and intent.get("parking") is not None:
-        df_filtered = df_filtered[df_filtered['parking']]
+        expected_value = _normalize_bool_like(intent["parking"])
+        if expected_value is not None and 'parking' in df_filtered.columns:
+            df_filtered = df_filtered[df_filtered['parking'].apply(_normalize_bool_like) == expected_value]
 
     print("*** Structured filter applied.")
     return df_filtered
@@ -764,16 +896,7 @@ def _handle_poi_refine(query, session, user_location, embeddings, df,
     tokens_query_input += input_tokens
     tokens_query_output += output_tokens
 
-    canonical_fields = [
-        "category",
-        "cuisine",
-        "price_level",
-        "radius_km",
-        "open_now",
-        "rating",
-        "parking",
-        "name",
-    ]
+    canonical_fields = POI_CONSTRAINT_FIELDS
 
     explicit_field_updates = {
         k: new_constraints.get(k)
@@ -805,7 +928,7 @@ def _handle_poi_refine(query, session, user_location, embeddings, df,
     tokens_query_output += output_tokens
 
     # Update context with filled constraints
-    for field in ["category", "cuisine", "price_level", "radius_km", "open_now", "rating", "parking", "name"]:
+    for field in POI_CONSTRAINT_FIELDS:
         if field in session.poi_constraints and session.poi_constraints[field] is not None:
             if hasattr(session.user_context.preferences.poi, field):
                 setattr(session.user_context.preferences.poi, field, session.poi_constraints[field])
@@ -830,10 +953,8 @@ def _handle_poi_refine(query, session, user_location, embeddings, df,
     tokens_query_input += input_tokens
     tokens_query_output += output_tokens
 
-    pois_output = retrieved_pois[
-        ["name", "category", "rating", "price_level",
-         "address", "latitude", "longitude", "parking"]
-    ].to_dict(orient="records")
+    output_columns = [column for column in POI_OUTPUT_COLUMNS if column in retrieved_pois.columns]
+    pois_output = retrieved_pois[output_columns].to_dict(orient="records")
     pois_output = [clean_json(poi) for poi in pois_output]
 
     _finalize_turn(session, query, response, pois_output)
@@ -994,15 +1115,24 @@ def load_dataset(path_dataset, nrows, filter_city):
         return None
 
     df_filtered['price_level'] = df_filtered['attributes'].apply(map_price_level)
+    df_filtered['has_outdoor_seating'] = df_filtered['attributes'].apply(
+        lambda attributes: _extract_attribute(attributes, "OutdoorSeating", "bool")
+    )
+    df_filtered['noise_level'] = df_filtered['attributes'].apply(
+        lambda attributes: _extract_attribute(attributes, "NoiseLevel", "text")
+    )
+    df_filtered['good_for_kids'] = df_filtered['attributes'].apply(
+        lambda attributes: _extract_attribute(attributes, "GoodForKids", "bool")
+    )
     df_filtered['text'] = df_filtered.apply(preprocess_poi_json, axis=1)
 
     def has_parking(attributes: dict) -> bool:
         try:
-            if isinstance(attributes, dict):
-                parking_str = attributes.get("BusinessParking", None)
-                if parking_str and isinstance(parking_str, str):
-                    parking_dict = ast.literal_eval(parking_str)
-                    return any(parking_dict.values())
+            parking_value = _parse_attributes(attributes).get("BusinessParking")
+            if parking_value:
+                parking_dict = ast.literal_eval(parking_value)
+                if isinstance(parking_dict, dict):
+                    return any(bool(value) for value in parking_dict.values())
         except Exception:
             pass
         return False
@@ -1028,6 +1158,7 @@ def save_data(df, embeddings, df_path="data/filtered_pois.csv", emb_path="data/e
 def load_data(df_path="filtered_pois.csv", emb_path="embeddings.npy"):
     if os.path.exists(df_path) and os.path.exists(emb_path):
         df = pd.read_csv(df_path, encoding='utf-8')
+        df = _with_derived_poi_columns(df)
         embeddings = np.load(emb_path)
         return df, embeddings
     else:

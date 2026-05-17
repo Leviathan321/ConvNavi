@@ -101,6 +101,9 @@ PROMPT_PARSE_CONSTRAINTS = """
             - open_now: true/false/null
             - rating: float between 1.0 and 5.0 or null
             - parking: true/false/null
+                        - has_outdoor_seating: true/false/null
+                        - noise_level: string or null (e.g., "quiet", "average", "loud")
+                        - good_for_kids: true/false/null
             - name: string or null (specific name or partial name of the place). The name is a unique identifier. 
               While the category is a type of a venue.
             - try to fill as many fields as possible, but only with information which is clearly supported by the query and the history.
@@ -109,19 +112,19 @@ PROMPT_PARSE_CONSTRAINTS = """
             Examples (where history is empty):
 
             Query: "Show me Italian restaurants open now with price range two dollars and rating at least 4."
-            Reponse: {{"category": "Restaurants", "cuisine": "Italian", "price_level": "$$", "radius_km": null, "parking":null, "open_now": true, "rating": 4.0, "name": null}}
+            Reponse: {{"category": "Restaurants", "cuisine": "Italian", "price_level": "$$", "radius_km": null, "parking":null, "open_now": true, "rating": 4.0, "has_outdoor_seating": null, "noise_level": null, "good_for_kids": null, "name": null}}
 
             Query: "I want Mexican places with rating above 3.5 within 3 kilometers."
-            Response: {{"category": null, "cuisine": "Mexican", "price_level": null, "radius_km": 3.0, "open_now": null, "parking":null, "rating": 3.5, "name": null}}
+            Response: {{"category": null, "cuisine": "Mexican", "price_level": null, "radius_km": 3.0, "open_now": null, "parking":null, "rating": 3.5, "has_outdoor_seating": null, "noise_level": null, "good_for_kids": null, "name": null}}
 
             Query: "Find fast food open now with low prices and rating above 4."
-            Response: {{"category": "Fast Food", "cuisine": null, "price_level": "$", "radius_km": null, "open_now": true, "parking":null, "rating": 4.0, "name": null}}
+            Response: {{"category": "Fast Food", "cuisine": null, "price_level": "$", "radius_km": null, "open_now": true, "parking":null, "rating": 4.0, "has_outdoor_seating": null, "noise_level": null, "good_for_kids": null, "name": null}}
 
             Query: "Show high class restaurants and rating at least 3."
-            Response: {{"category": "Restaurants", "cuisine": null, "price_level": "$$$", "radius_km": null, "open_now": null, "parking":null, "rating": 3.0, "name": null}}
+            Response: {{"category": "Restaurants", "cuisine": null, "price_level": "$$$", "radius_km": null, "open_now": null, "parking":null, "rating": 3.0, "has_outdoor_seating": null, "noise_level": null, "good_for_kids": null, "name": null}}
 
             Query: "Is there a place named 'Burger Heaven' around?"
-            Response: {{"category": null, "cuisine": null, "price_level": null, "radius_km": null, "open_now": null, "parking":null, "rating": null, "name": "Burger Heaven"}}    
+            Response: {{"category": null, "cuisine": null, "price_level": null, "radius_km": null, "open_now": null, "parking":null, "rating": null, "has_outdoor_seating": null, "noise_level": null, "good_for_kids": null, "name": "Burger Heaven"}}    
 
             Output now your response:
             Response: 
@@ -189,6 +192,9 @@ Return schema:
     "open_now": true/false/null,
     "rating": float or null,
     "parking": true/false/null,
+    "has_outdoor_seating": true/false/null,
+    "noise_level": string or null,
+    "good_for_kids": true/false/null,
     "name": string or null
 }}
 """

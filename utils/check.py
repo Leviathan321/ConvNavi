@@ -1,8 +1,8 @@
 import time
-from main import apply_structured_filters, get_embeddings_and_df, load_dataset
+from main import POI_OUTPUT_COLUMNS, apply_structured_filters, get_embeddings_and_df, load_dataset
 
 def check_if_poi_exists(df, constraints, user_location,
-                        output_columns = ['name','category','rating','price_level','address'],
+                        output_columns = POI_OUTPUT_COLUMNS,
                         max_pois = 5):
     if df is None or df.empty:
         return False, []
@@ -51,6 +51,10 @@ if __name__ == "__main__":
         "radius_km": None,
         "open_now": None,
         "rating": None,
+        "parking": None,
+        "has_outdoor_seating": None,
+        "noise_level": None,
+        "good_for_kids": None,
         "name": None
     }
 
