@@ -40,6 +40,7 @@ top_k = int(os.environ.get("TOP_K", 3))
 model = SentenceTransformer('all-MiniLM-L6-v2')
 
 INTENT_NO_NLU = os.getenv("INTENT_NO_NLU", "poi").upper()
+REQUEST_ONLY = os.getenv("REQUEST_ONLY", "false").strip().lower() in ("1", "true", "yes", "on")
 
 PROMPT_POI_INFO = """You are a helpful car navigation assistant. The user is asking a question about a place.
 
@@ -530,11 +531,15 @@ def run_rag_navigation(
     # --------------------
     print("[DEBUG] Intent:", intent)
     if intent == "POI":
-        action, tokens_input, tokens_output = classify_action(
-            query, history, llm_model=llm_model
-        )
-        tokens_query_input += tokens_input
-        tokens_query_output += tokens_output
+        if REQUEST_ONLY:
+            action = "refine"
+            print("[DEBUG] REQUEST_ONLY enabled, skipping classify_action")
+        else:
+            action, tokens_input, tokens_output = classify_action(
+                query, history, llm_model=llm_model
+            )
+            tokens_query_input += tokens_input
+            tokens_query_output += tokens_output
 
         print(f"[DEBUG] Classified action: {action}")
 
