@@ -9,26 +9,30 @@ initial_state_payload = {
     "user_id": USER_ID,
     "car_state": {
         "windows": {
-            "front_left": "closed",
-            "front_right": "closed",
-            "rear_left": "closed",
-            "rear_right": "closed"
+            "window_front_left": "closed",
+            "window_front_right": "closed",
+            "window_rear_left": "closed",
+            "window_rear_right": "closed"
         },
         "lights": {
-            "headlights": "low",
-            "fog_lights": "off",
-            "interior_front": "off",
-            "interior_rear": "off",
-            "ambient": "off"
+            "head_light": "off",
+            "fog_light": "off",
+            "ambient_light": "off",
+            "reading_light_front_left": "off",
+            "reading_light_front_right": "off",
+            "reading_light_rear_left": "off",
+            "reading_light_rear_right": "off"
         },
         "climate": {
-            "temperature_c": 21,
-            "fan_level": 2,
-            "mode": "auto"
+            "temperature": 21,
+            "climate": "off",
+            "fan": "off"
         },
         "seat_heating": {
-            "driver": "off",
-            "front_passenger": "off"
+            "seat_heating_front_left": "off",
+            "seat_heating_front_right": "off",
+            "seat_heating_rear_left": "off",
+            "seat_heating_rear_right": "off"
         }
     }
 }
@@ -39,7 +43,7 @@ print(json.dumps(resp.json(), indent=2))
 # Step 2: Send query via /query
 query_payload = {
     "user_id": USER_ID,
-    "query": "Turn on the headlights to low."
+    "query": "Turn on the head light."
 }
 
 resp = requests.post(f"{BASE_URL}/query", json=query_payload)

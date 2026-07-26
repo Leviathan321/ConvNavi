@@ -283,19 +283,19 @@ Query: "Open the front left window and turn off ambient light"
 current_state = {current_state}
 possible_values = {{
     "windows": ["open", "closed"],
-    "ambient": ["off", "low", "medium", "high"]
+    "ambient_light": ["off", "on"]
 }}
 Output:
 {{
     "changes": [
         {{
             "subsystem": "windows",
-            "target": "front_left",
+            "target": "window_front_left",
             "value": "open"
         }},
         {{
             "subsystem": "lights",
-            "target": "ambient",
+            "target": "ambient_light",
             "value": "off"
         }}
     ],
@@ -308,7 +308,7 @@ Output:
     "changes": [
         {{
             "subsystem": "seat_heating",
-            "target": "driver",
+            "target": "seat_heating_front_left",
             "value": "high"
         }}
     ],
@@ -321,7 +321,7 @@ Output:
     "changes": [
         {{
             "subsystem": "climate",
-            "target": "temperature_c",
+            "target": "temperature",
             "value": "increase"
         }}
     ],
