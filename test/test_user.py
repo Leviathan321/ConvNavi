@@ -1,5 +1,6 @@
 import requests
 import json
+import os
 import time
 import sys
 
@@ -9,7 +10,7 @@ def test_rag_navigation(query):
     payload = {
         "query": query,
         "user_location": [39.955431, -75.154903],
-        "llm_type": "llama3.2"
+        "llm_type": os.getenv("LLM_MODEL", "gpt-4o-mini")
     }
 
     headers = {
