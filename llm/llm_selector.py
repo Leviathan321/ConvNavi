@@ -40,7 +40,7 @@ def pass_llm(prompt,
     when a failure occurs.
     """
     global TOTAL_TOKENS, TOTAL_TOKENS_IN, TOTAL_TOKENS_OUT, TOTAL_COSTS, QUERY_COSTS
-
+    print("model:", model)
     try:
         if model in ("llama3","llama3.2", "mistral", "deepseek-v2",
                      "deepseek-r1", "qwen3:latest","qwen3:14b", "qwen"):
@@ -67,7 +67,7 @@ def pass_llm(prompt,
                 temperature=temperature,
                 model=model
             )
-        elif model in ("DeepSeek-V3-0324"):
+        elif model in ("DeepSeek-V3-0324", "DeepSeek-V3.2", "DeepSeek-V4-Pro"):
             response, input_tokens, output_tokens = call_deepseek(
                   prompt = prompt,
                   max_tokens=max_tokens,

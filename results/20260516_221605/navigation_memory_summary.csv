@@ -1,0 +1,12 @@
+test,preference,scope,passed,overall
+1,name,local,True,False
+1,price_level,global,False,False
+1,radius_km,global,True,False
+1,rating,local,True,False
+2,radius_km,global,True,True
+2,price_level,local,True,True
+2,rating,global,True,True
+2,parking,global,True,True
+2,name,local,True,True
+3,rating,local,True,True
+3,name,local,True,True
