@@ -67,7 +67,7 @@ def pass_llm(prompt,
                 temperature=temperature,
                 model=model
             )
-        elif model in ("DeepSeek-V3-0324"):
+        elif model in ("DeepSeek-V3-0324", "DeepSeek-V4-Pro"):
             response, input_tokens, output_tokens = call_deepseek(
                   prompt = prompt,
                   max_tokens=max_tokens,
