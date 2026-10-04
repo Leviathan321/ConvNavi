@@ -43,7 +43,8 @@ The system produces:
    ```
    LLM_MODEL=your_model_used
    ```
-   You can also use local, ollama-based models. First you need install [ollama](ollama.com) and then pull the desired model. Currently supported models are listed in the llm_selector file.
+  OpenAI-compatible deployments currently include `DeepSeek-V3.2`, `DeepSeek-V4-Pro`, `Kimi-K2-Thinking`, and `gpt-oss-120b`. Configure `OPENAI_ENDPOINT` and `OPENAI_KEY` for these models. They can also be selected per request through the `llm_type` field.
+  You can also use local, ollama-based models. First you need install [ollama](ollama.com) and then pull the desired model. Currently supported models are listed in the llm_selector file.
    To use azure openai models you have to configure the endpoint and api version in the `.env` file.
 
 ## Run the Application

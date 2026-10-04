@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 import json
+import traceback
 from main import get_embeddings_and_df, run_rag_navigation
 import os
 
@@ -46,4 +47,5 @@ if __name__ == "__main__":
             print(">", user_query)
             print("<", output["response"])
         except Exception as e:
+            traceback.print_exc()
             print(f"Error: {e}")

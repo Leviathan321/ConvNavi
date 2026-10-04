@@ -265,6 +265,7 @@ def _handle_car_intent(query, session, history, llm_model,
     )
     tokens_query_input += tokens_input
     tokens_query_output += tokens_output
+    print("[DEBUG] LLM output:", output_str)
 
     output_str = repair_json(output_str)
     result = json.loads(output_str)
