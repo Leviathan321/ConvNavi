@@ -227,6 +227,25 @@ def _finalize_turn(session, query, response, pois_output):
     session.complete(response, retrieved_pois=pois_output)
 
 
+def _coerce_car_value(subsystem, target, value, current_val):
+    """Convert an LLM-proposed value into a valid car state value or raise ValueError."""
+    expected_type = ENUM_MAP[subsystem][target]
+
+    if expected_type in (int, float):
+        if value == "increase":
+            new_val = current_val + 1
+        elif value == "decrease":
+            new_val = current_val - 1
+        else:
+            new_val = expected_type(float(value))
+        allowed = POSSIBLE_CAR_VALUES.get(target)
+        if allowed:
+            new_val = max(min(allowed), min(max(allowed), new_val))
+        return expected_type(new_val)
+
+    return expected_type(str(value).strip().lower())
+
+
 def _handle_car_intent(query, session, history, llm_model,
                        tokens_query_input, tokens_query_output, user_id):
     """Handle the CAR intent flow."""
@@ -264,18 +283,13 @@ def _handle_car_intent(query, session, history, llm_model,
         if target not in car_state.state[subsystem]:
             continue
 
-        current_val = car_state.state[subsystem][target]
-
-        if isinstance(current_val, (int, float)):
-            if value == "increase":
-                car_state.state[subsystem][target] += 1
-            elif value == "decrease":
-                car_state.state[subsystem][target] -= 1
-            else:
-                car_state.state[subsystem][target] = value
-        else:
-            enum_class = ENUM_MAP[subsystem][target]
-            car_state.state[subsystem][target] = enum_class(value)
+        try:
+            car_state.state[subsystem][target] = _coerce_car_value(
+                subsystem, target, value, car_state.state[subsystem][target]
+            )
+        except (ValueError, TypeError) as e:
+            # LLM proposed a value outside the allowed set (e.g. "on" for climate mode) -> skip it
+            print(f"[WARN] Ignoring invalid car change {subsystem}.{target}={value!r}: {e}")
 
     pois_output = car_state.get_state()
 

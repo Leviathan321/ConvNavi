@@ -34,8 +34,16 @@ class WiperState(Enum):
     HIGH = "high"
 
 class ClimateMode(Enum):
+    OFF = "off"
     AUTO = "auto"
     MANUAL = "manual"
+
+    @classmethod
+    def _missing_(cls, value):
+        # "on" is an alias: turning the climate on switches it to auto mode
+        if isinstance(value, str) and value.strip().lower() == "on":
+            return cls.AUTO
+        return None
 
 class SeatHeatingLevel(Enum):
     OFF = "off"
