@@ -2,6 +2,8 @@ from dataclasses import dataclass, field
 import json
 from typing import Dict, List
 import os
+import time
+from uuid import uuid4
 from dotenv import load_dotenv
 
 from car.state import CarState
@@ -65,8 +67,7 @@ class SessionManager:
     def __init__(self):
         if SessionManager._instance is not None:
             raise Exception("Use SessionManager.get_instance()")
-        self.sessions: Dict[str, Session] = {}
-        self.current_id = 0
+        self.sessions: Dict[int, Session] = {}
 
     @classmethod
     def get_instance(cls) -> "SessionManager":
@@ -74,11 +75,13 @@ class SessionManager:
             cls._instance = SessionManager()
         return cls._instance
 
-    def get_session(self, user_id: str) -> Session:
+    def get_session(self, user_id: int) -> Session:
         return self.sessions.get(user_id, None)
 
-    def create_session(self, user_id: str) -> Session:
-        self.current_id += 1
-        session = Session(id=self.current_id)
+    def create_session(self, user_id: int) -> Session:
+        ns = time.time_ns()
+        random_bits = uuid4().int & ((1 << 48) - 1)
+        session_id = ((ns << 16) ^ random_bits) % 1_000_000_000_000
+        session = Session(id=session_id)
         self.sessions[user_id] = session
         return session

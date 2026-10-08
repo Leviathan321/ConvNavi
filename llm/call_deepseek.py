@@ -24,6 +24,9 @@ def load_deepseek_client(model_name: str):
         endpoint = os.getenv("OPENAI_ENDPOINT")
         if endpoint and not endpoint.rstrip("/").endswith("/openai/v1"):
             endpoint = endpoint.rstrip("/") + "/openai/v1"
+        
+        print("endpoint:", endpoint)
+
         client = OpenAI(
             api_key=os.getenv("OPENAI_KEY"),
             base_url=endpoint,
@@ -34,7 +37,7 @@ def load_deepseek_client(model_name: str):
 
     endpoint = os.getenv("OPENAI_ENDPOINT")
     api_version = os.getenv("OPENAI_API_VERSION")
-
+    print("endpoint:", endpoint)
     api_key = os.getenv("OPENAI_KEY")
     
     client = ChatCompletionsClient(
@@ -63,7 +66,7 @@ def call_deepseek(deployment_name: str,
         if client_type == "openai":
             if deployment_name == "Kimi-K2-Thinking":
                 max_tokens = max(max_tokens, 4096)
-
+            print("deployment_name:", deployment_name)
             response = client.chat.completions.create(
                 model=deployment_name,
                 messages=[
