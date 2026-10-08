@@ -137,14 +137,16 @@ PROMPT_GENERATE_RECOMMENDATION="""User query: "{}"
         - Not much proactivity.
         - Ask the user for further input, if he wants to navigate there, or if he has other preferences/pois in mind if no poi is found.
         if no poi could be found.
-        - Try to sound humanlike.
+        - Try to sound human-like and not robotic.
         - Try to be concise. 
         - Do not repeat the query.
-        - Just summerize the place information with key details.
+        - Just summarize the place information with key details.
         - Mention the poi in the response, from the list of options which fits most.
         - Be carefull, that some pois might related to the request, not necessarily satisfy the users needs.
         - Especially the name might be misleading.
-
+        - Take into account and consider the conversation history in your response in terms of how you answer.
+        - Do not use too much passive voice.
+        
         - Use e.g. phrases like:
             - "I found ..."
             - "You can find ..."
