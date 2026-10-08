@@ -68,6 +68,7 @@ def query_handler(request: QueryRequest):
             os.environ['LLM_MODEL'] = request.llm_type
         llm_model = os.environ['LLM_MODEL']
         print("LLM model set: ", llm_model)
+        print("User_id:", request.user_id)
         output = run_rag_navigation(
             query=request.query,
             user_location=user_location,
